@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller / Build outputs
+build/
+dist/
+*.spec
+*.manifest
+
+# Local user configs & logs
+config.json
+*.log
+
+# Large binary installer (Upload via GitHub Releases instead of git commit)
+*.exe
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE files
+.idea/
+.vscode/
