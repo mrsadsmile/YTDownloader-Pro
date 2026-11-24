@@ -5,6 +5,7 @@ Production-grade desktop application matching UI/UX Pro Max standards.
 
 import os
 import sys
+import uuid
 import subprocess
 import urllib.request
 from typing import Optional, Dict, Any, List
@@ -22,7 +23,9 @@ from PySide6.QtGui import QPixmap, QImage, QClipboard
 from theme import Tokens
 from icons import get_icon, get_pixmap
 from settings_dialog import SettingsDialog
+from history_dialog import HistoryDialog
 import core
+import database
 
 
 class ThumbnailLoader(QThread):
@@ -69,6 +72,10 @@ class MainWindow(QMainWindow):
         icon_path = core.APP_DIR / "app_icon.ico"
         if icon_path.exists():
             self.setWindowIcon(get_icon("download", Tokens.ACCENT, 32))
+
+        # Initialize persistence & reconcile interrupted jobs
+        self.db = database.get_db()
+        self.db.jobs.recover_interrupted_jobs()
 
         self.init_ui()
         self.check_clipboard_for_url()
@@ -156,6 +163,14 @@ class MainWindow(QMainWindow):
             font-weight: 600;
         """)
         h_layout.addWidget(self.lbl_engine_status)
+
+        # History Button
+        self.btn_history = QPushButton()
+        self.btn_history.setIcon(get_icon("clock", Tokens.TEXT_PRIMARY, 16))
+        self.btn_history.setToolTip("View Download History")
+        self.btn_history.setFixedSize(36, 36)
+        self.btn_history.clicked.connect(self.open_history)
+        h_layout.addWidget(self.btn_history)
 
         # Settings Button
         self.btn_settings = QPushButton()
@@ -583,20 +598,29 @@ class MainWindow(QMainWindow):
             self.on_analyze_clicked()
 
     def clear_url(self):
+        if self.inspect_worker and self.inspect_worker.isRunning():
+            self.inspect_worker.cancel()
         self.txt_url.clear()
         self.preview_card.setVisible(False)
         self.active_media_info = None
         self.lbl_url_feedback.setText("")
+        self.btn_analyze.setEnabled(True)
+        self.btn_analyze.setText("Analyze")
         self.reset_hud()
 
     def on_url_text_changed(self, text: str):
         t = text.strip()
         if not t:
             self.lbl_url_feedback.setText("")
-        elif t.startswith("http://") or t.startswith("https://"):
-            self.lbl_url_feedback.setText("Valid media URL structure.")
+            self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.TEXT_MUTED};")
         else:
-            self.lbl_url_feedback.setText("Enter a valid URL starting with http:// or https://")
+            is_valid, reason = core.validate_url(t)
+            if is_valid:
+                self.lbl_url_feedback.setText("✓ Valid media URL format")
+                self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.SUCCESS};")
+            else:
+                self.lbl_url_feedback.setText(reason)
+                self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.WARNING};")
 
     def browse_folder(self):
         path = QFileDialog.getExistingDirectory(self, "Select Download Directory", self.txt_path.text())
@@ -620,6 +644,16 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             self.config = core.load_config()
             self.txt_path.setText(self.config.get("download_path", core.DEFAULT_DOWNLOAD_PATH))
+            app_inst = QApplication.instance()
+            if app_inst:
+                if self.config.get("language") == "fa":
+                    app_inst.setLayoutDirection(Qt.RightToLeft)
+                else:
+                    app_inst.setLayoutDirection(Qt.LeftToRight)
+
+    def open_history(self):
+        dlg = HistoryDialog(self, self.db)
+        dlg.exec()
 
     def reset_hud(self):
         self.progress_bar.setValue(0)
@@ -632,13 +666,17 @@ class MainWindow(QMainWindow):
     # --- ANALYSIS FLOW ---
     def on_analyze_clicked(self):
         url = self.txt_url.text().strip()
-        if not url:
-            self.lbl_url_feedback.setText("Please paste a media URL first.")
+        is_valid, reason = core.validate_url(url)
+        if not is_valid:
+            self.lbl_url_feedback.setText(reason)
+            self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.ERROR};")
             return
 
         self.btn_analyze.setEnabled(False)
         self.btn_analyze.setText("Analyzing...")
         self.lbl_task_status.setText("Analyzing media metadata...")
+        self.lbl_url_feedback.setText("Fetching metadata from source...")
+        self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.TEXT_MUTED};")
 
         proxy = self.config.get("proxy_url") if self.config.get("proxy_enabled") else None
 
@@ -654,7 +692,10 @@ class MainWindow(QMainWindow):
 
         # Populate Preview Card
         self.lbl_prev_title.setText(data.get("title", "Untitled Media"))
-        self.lbl_prev_channel.setText(f"Creator: {data.get('uploader')}")
+        if data.get("is_playlist"):
+            self.lbl_prev_channel.setText(f"Playlist ({data.get('playlist_count')} items) • {data.get('uploader')}")
+        else:
+            self.lbl_prev_channel.setText(f"Creator: {data.get('uploader')}")
         self.lbl_prev_duration.setText(f"Duration: {data.get('duration')}")
 
         res_list = data.get("resolutions", [])
@@ -758,6 +799,33 @@ class MainWindow(QMainWindow):
         self.lbl_percent.setText("100%")
         self.lbl_task_status.setText("Completed")
         self.last_download_result = result
+
+        # Persist completed download to history database
+        out_file = result.get("video_file") or result.get("audio_file") or ""
+        file_size = 0
+        if out_file and os.path.exists(out_file):
+            try:
+                file_size = os.path.getsize(out_file)
+            except Exception:
+                pass
+
+        title = self.active_media_info.get("title", "Untitled Media") if self.active_media_info else "Downloaded Media"
+        url = self.txt_url.text().strip()
+        mode = "Video"
+        if self.btn_mode_audio.property("checked"):
+            mode = "Audio"
+        elif self.btn_mode_dual.property("checked"):
+            mode = "Dual Mode"
+
+        self.db.history.add_record(
+            job_id=str(uuid.uuid4()),
+            title=title,
+            url=url,
+            file_path=out_file,
+            media_type=mode,
+            file_size=file_size,
+            duration=self.active_media_info.get("duration", "--:--") if self.active_media_info else "--:--"
+        )
 
         QMessageBox.information(
             self,

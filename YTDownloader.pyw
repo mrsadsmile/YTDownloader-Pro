@@ -44,6 +44,13 @@ def main():
     # Apply Design System QSS
     app.setStyleSheet(theme.get_stylesheet())
 
+    # Set Layout Direction based on Language
+    cfg = core.load_config()
+    if cfg.get("language") == "fa":
+        app.setLayoutDirection(Qt.RightToLeft)
+    else:
+        app.setLayoutDirection(Qt.LeftToRight)
+
     # Initialize and display Main Window
     window = MainWindow()
     window.show()

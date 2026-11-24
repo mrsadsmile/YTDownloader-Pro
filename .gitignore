@@ -9,9 +9,13 @@ dist/
 *.spec
 *.manifest
 
-# Local user configs & logs
+# Local user configs, databases & logs
 config.json
 *.log
+*.db
+*.db-shm
+*.db-wal
+.pytest_cache/
 
 # Large binary installer (Upload via GitHub Releases instead of git commit)
 *.exe

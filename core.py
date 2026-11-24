@@ -12,8 +12,10 @@ import winreg
 import shutil
 import subprocess
 import urllib.request
+import urllib.parse
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 from PySide6.QtCore import QThread, Signal, QObject
 import yt_dlp
@@ -122,6 +124,271 @@ def get_ffprobe_path() -> Optional[str]:
         return None
 
 
+# --- Validation, Errors & Filesystem Safety ---
+@dataclass
+class AppError:
+    code: str
+    user_message: str
+    technical_message: str
+    component: str = "core"
+    retryable: bool = False
+
+
+def validate_url(url: str) -> Tuple[bool, str]:
+    """Validates that the input is a valid HTTP/HTTPS media URL."""
+    if not url or not isinstance(url, str):
+        return False, "URL cannot be empty."
+    u = url.strip()
+    if not (u.startswith("http://") or u.startswith("https://")):
+        return False, "URL must start with http:// or https://"
+    try:
+        parsed = urllib.parse.urlparse(u)
+        if not parsed.netloc or "." not in parsed.netloc:
+            return False, "Invalid domain name in URL."
+        return True, "Valid URL"
+    except Exception as e:
+        return False, f"Malformed URL: {e}"
+
+
+def clean_url(url: str) -> str:
+    """Strips social tracking and referrer parameters from media URLs."""
+    if not url:
+        return ""
+    try:
+        parsed = urllib.parse.urlparse(url.strip())
+        query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        strip_keys = {"si", "feature", "fbclid", "igshid", "utm_source", "utm_medium", "utm_campaign"}
+        new_query = {k: v for k, v in query.items() if k not in strip_keys}
+        new_query_str = urllib.parse.urlencode(new_query, doseq=True)
+        cleaned = urllib.parse.urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            new_query_str,
+            parsed.fragment
+        ))
+        return cleaned
+    except Exception:
+        return url.strip()
+
+
+def sanitize_filename(name: str) -> str:
+    """Removes or replaces illegal Windows filesystem characters and path traversal tokens."""
+    if not name:
+        return "untitled_media"
+    cleaned = re.sub(r'\.{2,}', '_', name)
+    cleaned = re.sub(r'[<>:"/\\|?*]', '_', cleaned)
+    cleaned = re.sub(r'[\x00-\x1f]', '', cleaned)
+    cleaned = cleaned.strip('. ')
+    return cleaned if cleaned else "untitled_media"
+
+
+def get_unique_path(directory: Path | str, filename: str) -> Path:
+    """Returns a unique non-colliding filepath in directory by appending (1), (2), etc."""
+    dir_path = Path(directory)
+    base_name = sanitize_filename(filename)
+    stem, ext = os.path.splitext(base_name)
+    target = dir_path / base_name
+    counter = 1
+    while target.exists():
+        target = dir_path / f"{stem} ({counter}){ext}"
+        counter += 1
+    return target
+
+
+def verify_output_file(path: str | Path) -> bool:
+    """Verifies that an output file exists on disk and is greater than 0 bytes."""
+    if not path:
+        return False
+    try:
+        p = Path(path)
+        return p.is_file() and p.stat().st_size > 0
+    except (OSError, PermissionError):
+        return False
+
+
+def classify_error(exception: Any) -> AppError:
+    """Classifies raw error messages into structured AppError with user message and retry flag."""
+    raw = str(exception)
+    clean_raw = re.sub(r"ERROR:\s*", "", raw).strip()
+    low = clean_raw.lower()
+
+    if any(k in low for k in ["network", "timed out", "connection", "urlopen error", "name or service not known", "getaddrinfo"]):
+        return AppError(
+            code="ERR_NETWORK",
+            user_message="Unable to connect to the source. Check your internet connection or proxy settings.",
+            technical_message=clean_raw,
+            component="network",
+            retryable=True
+        )
+    elif any(k in low for k in ["proxy", "socks", "tunnel", "127.0.0.1"]):
+        return AppError(
+            code="ERR_PROXY",
+            user_message="Proxy connection failed. Verify your proxy configuration.",
+            technical_message=clean_raw,
+            component="proxy",
+            retryable=True
+        )
+    elif any(k in low for k in ["private", "sign in", "members-only", "login", "restricted", "confirm your age"]):
+        return AppError(
+            code="ERR_RESTRICTED",
+            user_message="This media is private, age-restricted, or requires user login.",
+            technical_message=clean_raw,
+            component="extractor",
+            retryable=False
+        )
+    elif any(k in low for k in ["ffmpeg", "ffprobe", "merge", "postprocessor"]):
+        return AppError(
+            code="ERR_FFMPEG",
+            user_message="FFmpeg media processing error. Check FFmpeg installation.",
+            technical_message=clean_raw,
+            component="ffmpeg",
+            retryable=True
+        )
+    elif any(k in low for k in ["space", "disk", "permission", "access is denied", "winerror 448", "winerror"]):
+        return AppError(
+            code="ERR_DISK_SPACE",
+            user_message="Unable to save the file. Check your download directory permissions and storage.",
+            technical_message=clean_raw,
+            component="filesystem",
+            retryable=True
+        )
+    elif any(k in low for k in ["canceled", "cancelled", "abort"]):
+        return AppError(
+            code="ERR_ABORTED",
+            user_message="Download was cancelled by user.",
+            technical_message=clean_raw,
+            component="user",
+            retryable=False
+        )
+    else:
+        return AppError(
+            code="ERR_UNKNOWN",
+            user_message="Operation failed. You can retry or view technical details.",
+            technical_message=clean_raw,
+            component="core",
+            retryable=True
+        )
+
+
+def get_audio_codec_info(audio_format: str) -> Tuple[str, bool]:
+    """Returns (ffmpeg_codec_name, uses_bitrate_flag) for an audio format."""
+    fmt = (audio_format or "mp3").lower().strip()
+    codec_map = {
+        "mp3": ("libmp3lame", True),
+        "m4a": ("aac", True),
+        "opus": ("libopus", True),
+        "flac": ("flac", False),
+        "wav": ("pcm_s16le", False),
+    }
+    return codec_map.get(fmt, ("libmp3lame", True))
+
+
+# --- Built-in & User Presets ---
+BUILTIN_PRESETS = {
+    "High Quality 1080p (MP4)": {
+        "download_type": "Video",
+        "video_quality": "1080p",
+        "video_format": "MP4",
+        "audio_format": "MP3",
+        "audio_quality": "320 kbps",
+        "embed_metadata": True
+    },
+    "Maximum 4K Quality": {
+        "download_type": "Video",
+        "video_quality": "2160p (4K)",
+        "video_format": "MKV",
+        "audio_format": "MP3",
+        "audio_quality": "320 kbps",
+        "embed_metadata": True
+    },
+    "Podcast & Music MP3 (320 kbps)": {
+        "download_type": "Audio",
+        "audio_format": "MP3",
+        "audio_quality": "320 kbps",
+        "embed_metadata": True
+    },
+    "Lossless Master Audio (FLAC)": {
+        "download_type": "Audio",
+        "audio_format": "FLAC",
+        "audio_quality": "Best Available",
+        "embed_metadata": True
+    },
+    "Mobile Compact (480p MP4)": {
+        "download_type": "Video",
+        "video_quality": "480p",
+        "video_format": "MP4",
+        "embed_metadata": False
+    }
+}
+
+
+def get_presets() -> Dict[str, Dict[str, Any]]:
+    """Returns merged built-in presets and user custom presets from config."""
+    cfg = load_config()
+    presets = dict(BUILTIN_PRESETS)
+    user_presets = cfg.get("user_presets", {})
+    if isinstance(user_presets, dict):
+        presets.update(user_presets)
+    return presets
+
+
+def save_user_preset(name: str, preset_dict: Dict[str, Any]):
+    """Saves a custom user preset into configuration."""
+    cfg = load_config()
+    if "user_presets" not in cfg or not isinstance(cfg["user_presets"], dict):
+        cfg["user_presets"] = {}
+    cfg["user_presets"][name] = preset_dict
+    save_config(cfg)
+
+
+def delete_user_preset(name: str) -> bool:
+    """Deletes a custom user preset from configuration."""
+    cfg = load_config()
+    user_presets = cfg.get("user_presets", {})
+    if isinstance(user_presets, dict) and name in user_presets:
+        del user_presets[name]
+        cfg["user_presets"] = user_presets
+        save_config(cfg)
+        return True
+    return False
+
+
+def redact_secrets(text: str) -> str:
+    """Redacts user passwords or authorization tokens from URLs and log strings."""
+    if not text:
+        return ""
+    # Redact user:password@host
+    redacted = re.sub(r'://([^:]+):([^@]+)@', r'://\1:***@', str(text))
+    return redacted
+
+
+def generate_diagnostic_report() -> str:
+    """Generates safe, structured system diagnostic information for troubleshooting."""
+    ffmpeg_bin = get_ffmpeg_path()
+    ffprobe_bin = get_ffprobe_path()
+    cfg = load_config()
+    safe_proxy = redact_secrets(cfg.get("proxy_url", "")) if cfg.get("proxy_enabled") else "Disabled"
+
+    lines = [
+        "=== YTDownloader Pro Diagnostic Report ===",
+        f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Application Version: 2.6.0 (Pro Desktop)",
+        f"Operating System: {sys.platform} ({os.name})",
+        f"Python Version: {sys.version.split()[0]} ({'64-bit' if sys.maxsize > 2**32 else '32-bit'})",
+        f"PySide6 Framework Version: {getattr(sys.modules.get('PySide6'), '__version__', '6.12.0')}",
+        f"yt-dlp Engine Version: {getattr(yt_dlp.version, '__version__', 'Unknown')}",
+        f"FFmpeg Path: {ffmpeg_bin or 'MISSING'}",
+        f"FFprobe Path: {ffprobe_bin or 'MISSING'}",
+        f"Active Proxy: {safe_proxy}",
+        f"Download Directory: {cfg.get('download_path', DEFAULT_DOWNLOAD_PATH)}",
+        f"SponsorBlock: {'Enabled' if cfg.get('sponsorblock_enabled') else 'Disabled'}",
+        "=========================================="
+    ]
+    return "\n".join(lines)
+
+
 # --- Configuration Management ---
 DEFAULT_CONFIG = {
     "language": "en",  # "en" or "fa"
@@ -134,6 +401,7 @@ DEFAULT_CONFIG = {
     "audio_quality": "320 kbps",
     "proxy_enabled": False,
     "proxy_url": "http://127.0.0.1:10809",
+    "cookie_file": "",
     "sponsorblock_enabled": False,
     "embed_metadata": True,
     "download_thumbnail": False,
@@ -166,6 +434,13 @@ def save_config(cfg: Dict[str, Any]):
         pass
 
 
+def reset_config() -> Dict[str, Any]:
+    """Resets configuration file to DEFAULT_CONFIG."""
+    cfg = dict(DEFAULT_CONFIG)
+    save_config(cfg)
+    return cfg
+
+
 class DownloadCanceled(Exception):
     pass
 
@@ -180,9 +455,14 @@ class InspectWorker(QThread):
         super().__init__()
         self.url = url
         self.proxy = proxy
+        self.cancel_requested = False
+
+    def cancel(self):
+        self.cancel_requested = True
 
     def run(self):
         self.sig_started.emit()
+        cleaned = clean_url(self.url)
         opts = {
             "quiet": True,
             "skip_download": True,
@@ -199,10 +479,29 @@ class InspectWorker(QThread):
 
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(self.url, download=False)
+                info = ydl.extract_info(cleaned, download=False)
+                if self.cancel_requested:
+                    return
+
                 if not info:
                     self.sig_failed.emit("No media metadata found for this URL.")
                     return
+
+                # Detect playlist
+                is_playlist = (info.get("_type") == "playlist") or ("entries" in info)
+                entries = info.get("entries") or []
+                playlist_count = len(entries) if is_playlist else 0
+                if is_playlist and entries:
+                    first_item = entries[0] if isinstance(entries[0], dict) else {}
+                    title = info.get("title") or first_item.get("title", "Playlist")
+                    uploader = info.get("uploader") or first_item.get("uploader", "Unknown Creator")
+                    thumbnail = info.get("thumbnail") or first_item.get("thumbnail")
+                    duration_sec = 0
+                else:
+                    title = info.get("title", "Untitled Media")
+                    uploader = info.get("uploader") or info.get("channel") or "Unknown Creator"
+                    thumbnail = info.get("thumbnail")
+                    duration_sec = info.get("duration", 0)
 
                 # Parse available video resolutions
                 formats = info.get("formats", [])
@@ -239,28 +538,31 @@ class InspectWorker(QThread):
                 else:
                     clean_res.insert(0, "Best Available")
 
-                duration = info.get("duration", 0)
-                mins, secs = divmod(duration, 60)
+                mins, secs = divmod(duration_sec, 60)
                 hrs, mins = divmod(mins, 60)
                 dur_str = f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
 
                 payload = {
-                    "url": self.url,
-                    "title": info.get("title", "Untitled Media"),
-                    "uploader": info.get("uploader") or info.get("channel") or "Unknown Creator",
+                    "url": cleaned,
+                    "title": title,
+                    "uploader": uploader,
                     "duration": dur_str,
-                    "thumbnail": info.get("thumbnail"),
+                    "duration_sec": duration_sec,
+                    "thumbnail": thumbnail,
                     "resolutions": clean_res,
                     "has_audio": has_audio,
                     "ext": info.get("ext", "mp4"),
-                    "is_live": info.get("is_live", False)
+                    "is_live": info.get("is_live", False),
+                    "is_playlist": is_playlist,
+                    "playlist_count": playlist_count
                 }
-                self.sig_completed.emit(payload)
+                if not self.cancel_requested:
+                    self.sig_completed.emit(payload)
 
         except Exception as e:
-            err_msg = str(e)
-            clean_err = re.sub(r"ERROR:\s*", "", err_msg)
-            self.sig_failed.emit(clean_err)
+            if not self.cancel_requested:
+                err_obj = classify_error(e)
+                self.sig_failed.emit(err_obj.user_message)
 
 
 class DownloadWorker(QThread):
@@ -283,7 +585,7 @@ class DownloadWorker(QThread):
 
     def run(self):
         url = self.params["url"]
-        save_path = self.params["download_path"]
+        save_path = self.params.get("download_path") or DEFAULT_DOWNLOAD_PATH
         download_type = self.params.get("download_type", "Video")
         v_quality = self.params.get("video_quality", "Best Available")
         v_format = self.params.get("video_format", "MP4").lower()
@@ -343,7 +645,12 @@ class DownloadWorker(QThread):
 
         if proxy:
             ydl_opts["proxy"] = proxy
-            self.sig_log.emit(f"[PROXY] Traffic routed via: {proxy}")
+            self.sig_log.emit(f"[PROXY] Traffic routed via: {redact_secrets(proxy)}")
+
+        cookie_file = self.params.get("cookie_file")
+        if cookie_file and os.path.exists(cookie_file):
+            ydl_opts["cookiefile"] = cookie_file
+            self.sig_log.emit(f"[AUTH] Using cookie file: {os.path.basename(cookie_file)}")
 
         # Configure Format Profiles
         is_dual = (download_type == "Dual Mode")
@@ -399,6 +706,22 @@ class DownloadWorker(QThread):
                 "when": "after_filter"
             })
 
+        # Subtitles configuration
+        if self.params.get("download_subtitles"):
+            ydl_opts["writesubtitles"] = True
+            ydl_opts["writeautomaticsub"] = True
+            sub_lang = str(self.params.get("subtitle_lang", "en,fa")).split(",")
+            ydl_opts["subtitleslangs"] = [s.strip() for s in sub_lang if s.strip()]
+            ydl_opts["subtitlesformat"] = "srt/best"
+            if self.params.get("embed_subtitles") and v_format in ("mp4", "mkv"):
+                ydl_opts.setdefault("postprocessors", []).append({"key": "FFmpegEmbedSubtitle"})
+
+        # Thumbnail configuration
+        if self.params.get("download_thumbnail"):
+            ydl_opts["writethumbnail"] = True
+            if self.params.get("embed_metadata"):
+                ydl_opts.setdefault("postprocessors", []).append({"key": "EmbedThumbnail", "already_have_thumbnail": False})
+
         candidate_file = None
         extracted_audio_file = None
 
@@ -438,15 +761,17 @@ class DownloadWorker(QThread):
                 elif "128" in a_quality:
                     bitrate_flag = "128k"
 
+                codec, uses_bitrate = get_audio_codec_info(a_format)
                 cmd = [
                     ffmpeg_bin or "ffmpeg",
                     "-y",
                     "-i", candidate_file,
                     "-vn",
-                    "-c:a", "libmp3lame" if a_format == "mp3" else "aac",
-                    "-b:a", bitrate_flag,
-                    extracted_audio_file
+                    "-c:a", codec
                 ]
+                if uses_bitrate:
+                    cmd.extend(["-b:a", bitrate_flag])
+                cmd.append(extracted_audio_file)
                 res = subprocess.run(
                     cmd,
                     stdout=subprocess.PIPE,
@@ -462,6 +787,13 @@ class DownloadWorker(QThread):
                 self.sig_status.emit("Cancelled")
                 self.sig_error.emit("Download cancelled by user.")
             else:
+                # Verify downloaded media file exists and has content
+                if candidate_file and not verify_output_file(candidate_file):
+                    self.sig_status.emit("Failed")
+                    self.sig_error.emit("Downloaded media file could not be verified on disk or is empty.")
+                    self.sig_log.emit(f"[VERIFY FAILED] File missing or zero bytes: {candidate_file}")
+                    return
+
                 self.sig_status.emit("Completed")
                 self.sig_finished.emit({
                     "video_file": candidate_file,
@@ -473,7 +805,7 @@ class DownloadWorker(QThread):
             self.sig_status.emit("Cancelled")
             self.sig_error.emit("Download cancelled by user.")
         except Exception as e:
-            clean_err = re.sub(r"ERROR:\s*", "", str(e))
+            app_err = classify_error(e)
             self.sig_status.emit("Failed")
-            self.sig_error.emit(clean_err)
-            self.sig_log.emit(f"[CRITICAL ERROR] {clean_err}")
+            self.sig_error.emit(app_err.user_message)
+            self.sig_log.emit(f"[CRITICAL ERROR - {app_err.code}] {app_err.technical_message}")

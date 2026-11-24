@@ -149,6 +149,22 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.chk_remember)
         layout.addWidget(self.chk_notifications)
 
+        # Settings Management Row
+        mgmt_row = QHBoxLayout()
+        self.btn_export_settings = QPushButton("Export Settings...")
+        self.btn_export_settings.clicked.connect(self.export_settings)
+        mgmt_row.addWidget(self.btn_export_settings)
+
+        self.btn_import_settings = QPushButton("Import Settings...")
+        self.btn_import_settings.clicked.connect(self.import_settings)
+        mgmt_row.addWidget(self.btn_import_settings)
+
+        self.btn_reset_defaults = QPushButton("Reset Defaults")
+        self.btn_reset_defaults.setProperty("danger", True)
+        self.btn_reset_defaults.clicked.connect(self.reset_to_defaults)
+        mgmt_row.addWidget(self.btn_reset_defaults)
+        layout.addLayout(mgmt_row)
+
         layout.addStretch()
 
     def setup_proxy_tab(self):
@@ -245,6 +261,22 @@ class SettingsDialog(QDialog):
         self.chk_embed_metadata = QCheckBox("Embed media metadata tags into output files")
         layout.addWidget(self.chk_embed_metadata)
 
+        # Cookie File Selector
+        lbl_cookie = QLabel("Netscape Cookies File (Optional, for private media/memberships):")
+        lbl_cookie.setProperty("secondary", True)
+        layout.addWidget(lbl_cookie)
+
+        cookie_row = QHBoxLayout()
+        self.txt_cookie = QLineEdit()
+        self.txt_cookie.setPlaceholderText("Path to cookies.txt (Netscape format)...")
+        cookie_row.addWidget(self.txt_cookie)
+
+        self.btn_browse_cookie = QPushButton("Browse...")
+        self.btn_browse_cookie.setIcon(get_icon("folder", Tokens.TEXT_PRIMARY, 16))
+        self.btn_browse_cookie.clicked.connect(self.browse_cookie_file)
+        cookie_row.addWidget(self.btn_browse_cookie)
+        layout.addLayout(cookie_row)
+
         layout.addStretch()
 
     def setup_sponsor_tab(self):
@@ -311,6 +343,12 @@ class SettingsDialog(QDialog):
         lbl_note.setProperty("muted", True)
         layout.addWidget(lbl_note)
 
+        # Diagnostic Report Actions
+        self.btn_copy_diagnostics = QPushButton("Copy Diagnostic Report to Clipboard")
+        self.btn_copy_diagnostics.setIcon(get_icon("clipboard", Tokens.TEXT_PRIMARY, 16))
+        self.btn_copy_diagnostics.clicked.connect(self.copy_diagnostic_report)
+        layout.addWidget(self.btn_copy_diagnostics)
+
         layout.addStretch()
 
     def apply_preset(self, val: str):
@@ -345,6 +383,62 @@ class SettingsDialog(QDialog):
         if path:
             self.txt_dir.setText(path)
 
+    def browse_cookie_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Netscape Cookies File", self.txt_dir.text(), "Text Files (*.txt);;All Files (*)"
+        )
+        if file_path:
+            self.txt_cookie.setText(file_path)
+
+    def copy_diagnostic_report(self):
+        report = core.generate_diagnostic_report()
+        clipboard = QApplication.clipboard()
+        clipboard.setText(report)
+        QMessageBox.information(
+            self,
+            "Diagnostics Copied",
+            "Safe system diagnostic report has been copied to your clipboard."
+        )
+
+    def reset_to_defaults(self):
+        reply = QMessageBox.question(
+            self,
+            "Reset Settings",
+            "Are you sure you want to reset all preferences to default values?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.config = core.reset_config()
+            self.load_values()
+
+    def export_settings(self):
+        target, _ = QFileDialog.getSaveFileName(
+            self, "Export Configuration", "ytdownloader_config.json", "JSON Files (*.json)"
+        )
+        if target:
+            try:
+                with open(target, "w", encoding="utf-8") as f:
+                    json.dump(self.config, f, indent=2, ensure_ascii=False)
+                QMessageBox.information(self, "Export Complete", f"Settings exported to:\n{target}")
+            except Exception as e:
+                QMessageBox.critical(self, "Export Failed", str(e))
+
+    def import_settings(self):
+        src, _ = QFileDialog.getOpenFileName(
+            self, "Import Configuration", "", "JSON Files (*.json);;All Files (*)"
+        )
+        if src:
+            try:
+                with open(src, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        self.config.update(data)
+                        self.load_values()
+                        QMessageBox.information(self, "Import Complete", "Settings imported successfully.")
+            except Exception as e:
+                QMessageBox.critical(self, "Import Failed", f"Could not parse configuration file:\n{e}")
+
     def load_values(self):
         lang = self.config.get("language", "en")
         self.cmb_lang.setCurrentIndex(1 if lang == "fa" else 0)
@@ -365,6 +459,7 @@ class SettingsDialog(QDialog):
         self.cmb_def_a_format.setCurrentText(self.config.get("audio_format", "MP3"))
         self.cmb_def_a_quality.setCurrentText(self.config.get("audio_quality", "320 kbps"))
         self.chk_embed_metadata.setChecked(self.config.get("embed_metadata", True))
+        self.txt_cookie.setText(self.config.get("cookie_file", ""))
 
         # Sponsor
         self.chk_sponsor.setChecked(self.config.get("sponsorblock_enabled", False))
@@ -386,6 +481,7 @@ class SettingsDialog(QDialog):
         self.config["audio_format"] = self.cmb_def_a_format.currentText()
         self.config["audio_quality"] = self.cmb_def_a_quality.currentText()
         self.config["embed_metadata"] = self.chk_embed_metadata.isChecked()
+        self.config["cookie_file"] = self.txt_cookie.text().strip()
 
         # Sponsor
         self.config["sponsorblock_enabled"] = self.chk_sponsor.isChecked()
