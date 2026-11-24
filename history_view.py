@@ -127,6 +127,12 @@ class HistoryView(QWidget):
         """)
         layout.addWidget(self.table)
 
+        # Empty state indicator
+        self.lbl_empty = QLabel("No download history found.\nCompleted downloads will appear here.")
+        self.lbl_empty.setAlignment(Qt.AlignCenter)
+        self.lbl_empty.setStyleSheet(f"color: {Tokens.TEXT_MUTED}; font-size: 13px; padding: 40px;")
+        layout.addWidget(self.lbl_empty)
+
         self.refresh_table()
 
     def refresh_table(self):
@@ -151,6 +157,8 @@ class HistoryView(QWidget):
         )
 
         self.table.setRowCount(len(records))
+        self.lbl_empty.setVisible(len(records) == 0)
+        self.table.setVisible(len(records) > 0)
 
         for row, rec in enumerate(records):
             rec_id = rec["id"]

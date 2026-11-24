@@ -48,7 +48,7 @@ class JobRepository:
                 data.get("status", "Queued"),
                 data.get("progress", 0.0),
                 data.get("error_message"),
-                data.get("output_path"),
+                data.get("output_path") or data.get("destination") or data.get("download_path") or str(Path.home() / "Downloads"),
                 data.get("thumbnail"),
                 data.get("platform", "Web"),
                 data.get("speed"),

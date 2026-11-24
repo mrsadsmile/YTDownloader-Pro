@@ -112,9 +112,9 @@ based on this template or previous claims.
   Performance measurements                Tested    68 unit/GUI/E2E tests pass in 3.56s; fast startup and responsive GUI
   Accessibility and RTL/LTR               Tested    test_rtl_ltr_direction validates Persian (RTL) & English (LTR)
   Failure/recovery tests                  Tested    Clean DownloadCanceled exception, network retryable error flags, shutdown closeEvent
-  Full unit/integration/GUI/E2E suite     Tested    68 tests across all levels passing in test suite (100% pass rate)
+  Full unit/integration/GUI/E2E suite     Tested    69 tests across all levels passing in test suite (100% pass rate)
   Release build verification              Tested    Inno Setup script & standalone PyInstaller assets verified (YTDownloader_Setup.exe)
-  Release notes and final QA report       Tested    RELEASE_NOTES.md and FINAL_QA_REPORT.md generated for v3.0.0
+  Release notes and final QA report       Tested    RELEASE_NOTES.md, FINAL_QA_REPORT.md, EXPERT_QA_REPORT.md, RELEASE_READINESS.md
 
 ## Defect log
 
@@ -126,13 +126,16 @@ based on this template or previous claims.
   BUG-003   Low        Diagnostic Report     PySide6 line omitted in report       Added PySide6 version line      Resolved
   BUG-004   Medium     IPv4 Protocol Option  Exact string match failed on 'only'  Substring match 'ipv4' in mode  Resolved
   BUG-005   Medium     Queue Enqueue Syntax  Missing kwargs in QueueManager       Added **kwargs to enqueue_job   Resolved
+  BUG-006   High       Destination Mapping   Only output_path checked in DB       Normalized dest/path fallback   Resolved
+  BUG-007   High       Shutdown Lifecycle    No closeEvent on MainWindow          Added closeEvent & worker abort Resolved
+  BUG-008   Low        Empty State UX        Tables blank when empty              Added lbl_empty placeholders    Resolved
   --------------------------------------------------------------------------------------------------------------------------------
 
 ## Test evidence log
 
   Date         Command           Environment              Result    Logs/artifacts
   ------------ ----------------- ------------------------ --------- ----------------
-  2026-11-24   pytest tests -v   Win 11 / Python 3.14.7   PASSED    68 passed in 3.56s
+  2026-11-24   pytest tests -v   Win 11 / Python 3.14.7   PASSED    69 passed in 3.65s
 
 ## Decision log
 

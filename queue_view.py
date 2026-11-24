@@ -114,6 +114,12 @@ class QueueView(QWidget):
         """)
         layout.addWidget(self.table)
 
+        # Empty state indicator
+        self.lbl_empty = QLabel("Queue is empty.\nPaste a media URL in the Downloader or Playlist view to queue downloads.")
+        self.lbl_empty.setAlignment(Qt.AlignCenter)
+        self.lbl_empty.setStyleSheet(f"color: {Tokens.TEXT_MUTED}; font-size: 13px; padding: 40px;")
+        layout.addWidget(self.lbl_empty)
+
         self.refresh_table()
 
     def on_concurrency_changed(self, text: str):
@@ -137,6 +143,8 @@ class QueueView(QWidget):
     def refresh_table(self):
         jobs = self.db.jobs.get_all_jobs()
         self.table.setRowCount(len(jobs))
+        self.lbl_empty.setVisible(len(jobs) == 0)
+        self.table.setVisible(len(jobs) > 0)
 
         for row, job in enumerate(jobs):
             job_id = job["id"]

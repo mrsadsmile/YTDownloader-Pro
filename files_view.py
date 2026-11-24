@@ -92,6 +92,12 @@ class FilesView(QWidget):
         """)
         layout.addWidget(self.table)
 
+        # Empty state indicator
+        self.lbl_empty = QLabel("No media files found on disk.\nDownloaded files will be indexed and managed here.")
+        self.lbl_empty.setAlignment(Qt.AlignCenter)
+        self.lbl_empty.setStyleSheet(f"color: {Tokens.TEXT_MUTED}; font-size: 13px; padding: 40px;")
+        layout.addWidget(self.lbl_empty)
+
         self.refresh_files()
 
     def refresh_files(self):
@@ -118,6 +124,8 @@ class FilesView(QWidget):
                 existing_files.append((rec, p, fname))
 
         self.table.setRowCount(len(existing_files))
+        self.lbl_empty.setVisible(len(existing_files) == 0)
+        self.table.setVisible(len(existing_files) > 0)
 
         for row, (rec, file_path, fname) in enumerate(existing_files):
             rec_id = rec["id"]

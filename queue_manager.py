@@ -196,8 +196,9 @@ class QueueManager(QObject):
 
         worker_params = dict(core.load_config())
         worker_params.update(job)
-        if "destination" in job:
-            worker_params["download_path"] = job["destination"]
+        dest = job.get("destination") or job.get("output_path") or job.get("download_path")
+        if dest:
+            worker_params["download_path"] = dest
 
         worker = core.DownloadWorker(worker_params)
         self.active_workers[job_id] = worker

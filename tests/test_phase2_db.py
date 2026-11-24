@@ -57,6 +57,20 @@ class TestPhase2Database(unittest.TestCase):
         self.assertEqual(updated["status"], "Downloading")
         self.assertEqual(updated["progress"], 45.5)
 
+    def test_destination_field_mapping(self):
+        """Verify output_path, destination, and download_path are properly normalized in database."""
+        # 1. Using destination
+        j1 = self.db.jobs.add_job({"title": "Test 1", "destination": "C:/test_dest"})
+        self.assertEqual(self.db.jobs.get_job(j1)["output_path"], "C:/test_dest")
+
+        # 2. Using download_path
+        j2 = self.db.jobs.add_job({"title": "Test 2", "download_path": "C:/test_dl"})
+        self.assertEqual(self.db.jobs.get_job(j2)["output_path"], "C:/test_dl")
+
+        # 3. Using output_path
+        j3 = self.db.jobs.add_job({"title": "Test 3", "output_path": "C:/test_out"})
+        self.assertEqual(self.db.jobs.get_job(j3)["output_path"], "C:/test_out")
+
     def test_recover_interrupted_jobs(self):
         """Verify interrupted jobs are recovered on startup."""
         job_id = self.db.jobs.add_job({

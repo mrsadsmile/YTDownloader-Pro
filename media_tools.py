@@ -416,7 +416,7 @@ def fetch_sponsorblock_segments(
     cats_json = json.dumps(valid_cats)
 
     api_url = f"https://sponsor.ajay.app/api/skipSegments?videoID={vid}&categories={urllib.parse.quote(cats_json)}"
-    req = urllib.request.Request(api_url, headers={"User-Agent": "YTDownloader-Pro/2.7.0"})
+    req = urllib.request.Request(api_url, headers={"User-Agent": "YTDownloader-Pro/3.0.0"})
 
     try:
         with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
