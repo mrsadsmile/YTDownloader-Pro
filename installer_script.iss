@@ -37,8 +37,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "C:\Users\AliCH\yt-dlp-gui\dist\YTDownloader\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Install Peyda fonts directly to Windows Fonts directory
-Source: "C:\Users\AliCH\yt-dlp-gui\dist\YTDownloader\fonts\*.ttf"; DestDir: "{autofonts}"; Flags: onlyifdoesntexist uninsneveruninstall
+; Fonts (optional fallback to system UI fonts)
+; Source: "C:\Users\AliCH\yt-dlp-gui\dist\YTDownloader\fonts\*.ttf"; DestDir: "{autofonts}"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"; Comment: "YTDownloader Pro - Powered by yt-dlp"
