@@ -54,17 +54,17 @@ based on this template or previous claims.
 
   Feature                                     Status    Evidence / notes
   ------------------------------------------- --------- ------------------
-  Persistent queue and concurrency            Tested    QueueManager controls max_concurrent workers; dispatches from DB
-  Priority/reordering                         Tested    Jobs ordered by creation timestamp in SQLite queue
-  Restart recovery and deduplication          Tested    recover_interrupted_jobs() marks active jobs 'Interrupted' on start
-  Persistent history/search/filters           Tested    HistoryRepository in app_data.db with title/url search filtering
-  Playlist preview/selection/download         Tested    InspectWorker extracts playlist entries, item count, and first item
-  Playlist partial-failure handling           Tested    Worker handles per-item exceptions safely
-  Batch paste/TXT import/validation           Tested    parse_batch_urls() extracts and sanitizes valid media URLs
-  Files library/search/filters                Tested    HistoryDialog provides searchable list, size/date, and quick actions
-  File rename/move/delete/missing detection   Tested    HistoryDialog verifies os.path.exists() and warns if moved/deleted
-  SQLite migrations and consistency           Tested    schema_migrations table, WAL mode, foreign keys, and indexes
-  Phase 2 tests/regression                    Tested    20 automated unit, GUI & integration tests passing (0.89s)
+  Persistent queue and concurrency            Tested    QueueView with active concurrency slider (1-5), SQLite WAL queue, Bulk Pause/Resume/Cancel All, Clear Finished
+  Priority/reordering                         Tested    set_priority(), reorder_job(), UI Up/Down controls, auto redispatch by priority
+  Restart recovery and deduplication          Tested    recover_interrupted_jobs() marks active jobs 'Interrupted' on start, restores pending/queued jobs without duplicates
+  Persistent history/search/filters           Tested    HistoryView with live search, filters (platform, media type, status, sort), disk presence badges (● On Disk / ○ Moved)
+  Playlist preview/selection/download         Tested    PlaylistBatchView with PlaylistInspectWorker flat extraction, individual checkboxes, Select All/None, subfolder toggle, numbering template
+  Playlist partial-failure handling           Tested    Per-item worker exceptions safely caught, remaining queue continues processing
+  Batch paste/TXT import/validation           Tested    Batch Importer tab supporting multi-line paste, .txt file import, URL syntax validation, duplicate detection, batch enqueue
+  Files library/search/filters                Tested    FilesView media library with search, video/audio filters, Open, Reveal in Explorer
+  File rename/move/delete/missing detection   Tested    Safe Rename (syncs DB), Safe Move (get_unique_path collision avoidance), Delete with confirmation modal
+  SQLite migrations and consistency           Tested    schema_migrations v2 applying jobs/history columns and indexes (idx_jobs_priority, idx_jobs_status_prio, etc.)
+  Phase 2 tests/regression                    Tested    44 automated unit, GUI, queue, and management tests passing in 2.81s
 
 ## Phase 3 --- Media tools
 
@@ -129,7 +129,7 @@ based on this template or previous claims.
 
   Date         Command           Environment              Result    Logs/artifacts
   ------------ ----------------- ------------------------ --------- ----------------
-  2026-11-24   pytest tests -v   Win 11 / Python 3.14.7   PASSED    29 passed in 1.17s
+  2026-11-24   pytest tests -v   Win 11 / Python 3.14.7   PASSED    44 passed in 2.81s
 
 ## Decision log
 
@@ -138,5 +138,7 @@ based on this template or previous claims.
   2026-11-24   Implement SQLite with WAL mode        Crash-safe persistence for history/jobs   Reliable recovery without corruption
   2026-11-24   Redact secrets in URLs and logs       Security: avoid credential leaks          Proxy passwords safely masked
   2026-11-24   Add HistoryDialog with file check     Better UX: easily open/locate media       Direct integration with Explorer
+  2026-11-24   Add 5-Tab Segmented Navigation        Dedicated views for Queue, Batch, Files   Scalable, intuitive desktop UX
+  2026-11-24   Apply SQLite Migration v2             Priority, speed, ETA, platform tracking   Enhanced queue & history schema
 
-**Current release status:** Fully Verified (v2.6.0 ready).
+**Current release status:** Fully Verified (v2.7.0 Phase 2 ready).

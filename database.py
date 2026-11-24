@@ -33,8 +33,9 @@ class JobRepository:
                     id, url, title, download_type, video_quality,
                     video_format, audio_format, audio_quality,
                     status, progress, error_message, output_path,
+                    thumbnail, platform, speed, eta, file_size, priority,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 job_id,
                 data.get("url", ""),
@@ -48,6 +49,12 @@ class JobRepository:
                 data.get("progress", 0.0),
                 data.get("error_message"),
                 data.get("output_path"),
+                data.get("thumbnail"),
+                data.get("platform", "Web"),
+                data.get("speed"),
+                data.get("eta"),
+                data.get("file_size", 0),
+                data.get("priority", 0),
                 now,
                 now
             ))
@@ -60,7 +67,8 @@ class JobRepository:
         return dict(row) if row else None
 
     def update_status(self, job_id: str, status: str, progress: Optional[float] = None,
-                      error_message: Optional[str] = None, output_path: Optional[str] = None):
+                      error_message: Optional[str] = None, output_path: Optional[str] = None,
+                      speed: Optional[str] = None, eta: Optional[str] = None, file_size: Optional[int] = None):
         now = datetime.now().isoformat()
         conn = self._get_conn()
         with conn:
@@ -76,22 +84,62 @@ class JobRepository:
             if output_path is not None:
                 updates.append("output_path = ?")
                 params.append(output_path)
+            if speed is not None:
+                updates.append("speed = ?")
+                params.append(speed)
+            if eta is not None:
+                updates.append("eta = ?")
+                params.append(eta)
+            if file_size is not None:
+                updates.append("file_size = ?")
+                params.append(file_size)
+            if status == "Downloading":
+                updates.append("started_at = COALESCE(started_at, ?)")
+                params.append(now)
+            elif status in ("Completed", "Failed", "Cancelled"):
+                updates.append("completed_at = ?")
+                params.append(now)
 
             params.append(job_id)
             query = f"UPDATE jobs SET {', '.join(updates)} WHERE id = ?"
             conn.execute(query, params)
 
+    def set_priority(self, job_id: str, priority: int) -> bool:
+        now = datetime.now().isoformat()
+        conn = self._get_conn()
+        with conn:
+            cursor = conn.execute("UPDATE jobs SET priority = ?, updated_at = ? WHERE id = ?", (priority, now, job_id))
+            return cursor.rowcount > 0
+
+    def reorder_job(self, job_id: str, direction: str) -> bool:
+        """Move job up or down relative to its peers by priority/timestamp."""
+        job = self.get_job(job_id)
+        if not job:
+            return False
+        delta = 1 if direction == "up" else -1
+        new_prio = job.get("priority", 0) + delta
+        return self.set_priority(job_id, new_prio)
+
     def get_pending_jobs(self, limit: int = 20) -> List[Dict[str, Any]]:
         conn = self._get_conn()
         cursor = conn.execute(
-            "SELECT * FROM jobs WHERE status IN ('Queued', 'Pending') ORDER BY created_at ASC LIMIT ?",
+            "SELECT * FROM jobs WHERE status IN ('Queued', 'Pending') ORDER BY priority DESC, created_at ASC LIMIT ?",
             (limit,)
         )
         return [dict(row) for row in cursor.fetchall()]
 
-    def get_all_jobs(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_all_jobs(self, status_filter: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
         conn = self._get_conn()
-        cursor = conn.execute("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,))
+        if status_filter and status_filter != "All":
+            cursor = conn.execute(
+                "SELECT * FROM jobs WHERE status = ? ORDER BY priority DESC, created_at DESC LIMIT ?",
+                (status_filter, limit)
+            )
+        else:
+            cursor = conn.execute(
+                "SELECT * FROM jobs ORDER BY priority DESC, created_at DESC LIMIT ?",
+                (limit,)
+            )
         return [dict(row) for row in cursor.fetchall()]
 
     def delete_job(self, job_id: str) -> bool:
@@ -99,6 +147,34 @@ class JobRepository:
         with conn:
             cursor = conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
             return cursor.rowcount > 0
+
+    def clear_completed(self) -> int:
+        conn = self._get_conn()
+        with conn:
+            cursor = conn.execute("DELETE FROM jobs WHERE status IN ('Completed', 'Cancelled', 'Failed')")
+            return cursor.rowcount
+
+    def pause_all(self) -> int:
+        now = datetime.now().isoformat()
+        conn = self._get_conn()
+        with conn:
+            cursor = conn.execute("""
+                UPDATE jobs
+                SET status = 'Paused', updated_at = ?
+                WHERE status IN ('Queued', 'Pending', 'Downloading', 'Analyzing', 'Processing')
+            """, (now,))
+            return cursor.rowcount
+
+    def resume_all(self) -> int:
+        now = datetime.now().isoformat()
+        conn = self._get_conn()
+        with conn:
+            cursor = conn.execute("""
+                UPDATE jobs
+                SET status = 'Queued', updated_at = ?
+                WHERE status = 'Paused'
+            """, (now,))
+            return cursor.rowcount
 
     def recover_interrupted_jobs(self) -> int:
         """Recovers any jobs marked active during unexpected application termination."""
@@ -118,29 +194,64 @@ class HistoryRepository:
         self._get_conn = conn_getter
 
     def add_record(self, job_id: str, title: str, url: str, file_path: str,
-                   media_type: str = "Video", file_size: int = 0, duration: str = "--:--") -> int:
+                   media_type: str = "Video", file_size: int = 0, duration: str = "--:--",
+                   platform: str = "Web", format: str = "MP4", quality: str = "Best Available",
+                   status: str = "Completed") -> int:
         now = datetime.now().isoformat()
         conn = self._get_conn()
         with conn:
             cursor = conn.execute("""
                 INSERT INTO history (
                     job_id, title, url, file_path,
-                    media_type, file_size, duration, completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (job_id, title, url, file_path, media_type, file_size, duration, now))
+                    media_type, file_size, duration, completed_at,
+                    platform, format, quality, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (job_id, title, url, file_path, media_type, file_size, duration, now, platform, format, quality, status))
             return cursor.lastrowid
 
-    def get_history(self, search: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+    def update_file_path(self, record_id: int, new_path: str) -> bool:
         conn = self._get_conn()
+        with conn:
+            cursor = conn.execute("UPDATE history SET file_path = ? WHERE id = ?", (new_path, record_id))
+            return cursor.rowcount > 0
+
+    def get_history(self, search: Optional[str] = None, platform: Optional[str] = None,
+                    media_type: Optional[str] = None, status: Optional[str] = None,
+                    sort_by: str = "completed_at_desc", limit: int = 200) -> List[Dict[str, Any]]:
+        conn = self._get_conn()
+        query = "SELECT * FROM history WHERE 1=1"
+        params = []
+
         if search and search.strip():
             term = f"%{search.strip()}%"
-            cursor = conn.execute("""
-                SELECT * FROM history
-                WHERE title LIKE ? OR url LIKE ? OR file_path LIKE ?
-                ORDER BY completed_at DESC LIMIT ?
-            """, (term, term, term, limit))
+            query += " AND (title LIKE ? OR url LIKE ? OR file_path LIKE ?)"
+            params.extend([term, term, term])
+
+        if platform and platform != "All":
+            query += " AND platform = ?"
+            params.append(platform)
+
+        if media_type and media_type != "All":
+            query += " AND media_type = ?"
+            params.append(media_type)
+
+        if status and status != "All":
+            query += " AND status = ?"
+            params.append(status)
+
+        if sort_by == "title_asc":
+            query += " ORDER BY title ASC"
+        elif sort_by == "title_desc":
+            query += " ORDER BY title DESC"
+        elif sort_by == "size_desc":
+            query += " ORDER BY file_size DESC"
         else:
-            cursor = conn.execute("SELECT * FROM history ORDER BY completed_at DESC LIMIT ?", (limit,))
+            query += " ORDER BY completed_at DESC"
+
+        query += " LIMIT ?"
+        params.append(limit)
+
+        cursor = conn.execute(query, params)
         return [dict(row) for row in cursor.fetchall()]
 
     def delete_record(self, record_id: int) -> bool:
@@ -186,6 +297,8 @@ class Database:
         current_version = self.get_schema_version()
         if current_version < 1:
             self._apply_migration_v1(conn)
+        if current_version < 2:
+            self._apply_migration_v2(conn)
 
     def get_schema_version(self) -> int:
         conn = self.get_connection()
@@ -235,6 +348,49 @@ class Database:
 
             # Record migration
             conn.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?)", (now,))
+
+    def _apply_migration_v2(self, conn: sqlite3.Connection):
+        now = datetime.now().isoformat()
+        with conn:
+            # Add columns to jobs if not present
+            job_cols = [c[1] for c in conn.execute("PRAGMA table_info(jobs)").fetchall()]
+            if "thumbnail" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN thumbnail TEXT")
+            if "platform" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN platform TEXT DEFAULT 'Web'")
+            if "speed" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN speed TEXT")
+            if "eta" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN eta TEXT")
+            if "file_size" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN file_size INTEGER DEFAULT 0")
+            if "priority" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN priority INTEGER DEFAULT 0")
+            if "started_at" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN started_at TEXT")
+            if "completed_at" not in job_cols:
+                conn.execute("ALTER TABLE jobs ADD COLUMN completed_at TEXT")
+
+            # Add columns to history if not present
+            hist_cols = [c[1] for c in conn.execute("PRAGMA table_info(history)").fetchall()]
+            if "platform" not in hist_cols:
+                conn.execute("ALTER TABLE history ADD COLUMN platform TEXT DEFAULT 'Web'")
+            if "format" not in hist_cols:
+                conn.execute("ALTER TABLE history ADD COLUMN format TEXT DEFAULT 'MP4'")
+            if "quality" not in hist_cols:
+                conn.execute("ALTER TABLE history ADD COLUMN quality TEXT DEFAULT 'Best Available'")
+            if "status" not in hist_cols:
+                conn.execute("ALTER TABLE history ADD COLUMN status TEXT DEFAULT 'Completed'")
+
+            # Add optimized query indexes
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_priority ON jobs(priority DESC, created_at ASC);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status_prio ON jobs(status, priority DESC);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_history_title ON history(title);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_history_platform ON history(platform);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_history_media_type ON history(media_type);")
+
+            # Record migration v2
+            conn.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?)", (now,))
 
     def close(self):
         if self._conn:

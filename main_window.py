@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QComboBox, QCheckBox, QProgressBar,
     QFileDialog, QFrame, QScrollArea, QSizePolicy, QPlainTextEdit,
-    QMessageBox, QApplication
+    QMessageBox, QApplication, QStackedWidget
 )
 from PySide6.QtCore import Qt, QThread, Signal, QSize
 from PySide6.QtGui import QPixmap, QImage, QClipboard
@@ -24,6 +24,11 @@ from theme import Tokens
 from icons import get_icon, get_pixmap
 from settings_dialog import SettingsDialog
 from history_dialog import HistoryDialog
+from queue_manager import QueueManager
+from queue_view import QueueView
+from playlist_batch_view import PlaylistBatchView
+from history_view import HistoryView
+from files_view import FilesView
 import core
 import database
 
@@ -76,6 +81,7 @@ class MainWindow(QMainWindow):
         # Initialize persistence & reconcile interrupted jobs
         self.db = database.get_db()
         self.db.jobs.recover_interrupted_jobs()
+        self.queue_mgr = QueueManager(self.db)
 
         self.init_ui()
         self.check_clipboard_for_url()
@@ -96,12 +102,18 @@ class MainWindow(QMainWindow):
 
         root_layout = QVBoxLayout(central_widget)
         root_layout.setContentsMargins(24, 20, 24, 20)
-        root_layout.setSpacing(14)
+        root_layout.setSpacing(12)
 
         # 1. Header Bar
         self.create_header(root_layout)
 
-        # Scroll Area for main content
+        # 2. Navigation Bar (Segmented Control)
+        self.create_navbar(root_layout)
+
+        # 3. Stacked Widget for Views
+        self.stack = QStackedWidget()
+
+        # View 0: Downloader
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
@@ -112,26 +124,93 @@ class MainWindow(QMainWindow):
         self.content_layout.setContentsMargins(0, 4, 0, 8)
         self.content_layout.setSpacing(14)
 
-        # 2. URL Input Card
+        # Downloader Cards
         self.create_url_card(self.content_layout)
-
-        # 3. Media Preview Card (Horizontal)
         self.create_preview_card(self.content_layout)
-
-        # 4. Configuration Card (Download Mode, Quality, Formats, Directory)
         self.create_configuration_card(self.content_layout)
-
-        # 5. Advanced Options (Collapsible)
         self.create_advanced_card(self.content_layout)
-
-        # 6. Progress & Actions HUD
         self.create_progress_hud(self.content_layout)
-
-        # 7. Collapsible Technical Logs
         self.create_technical_logs(self.content_layout)
 
         scroll.setWidget(scroll_content)
-        root_layout.addWidget(scroll)
+        self.view_downloader = scroll
+        self.stack.addWidget(self.view_downloader)
+
+        # View 1: Queue
+        self.view_queue = QueueView(self.queue_mgr)
+        self.stack.addWidget(self.view_queue)
+
+        # View 2: Playlists & Batch
+        self.view_batch = PlaylistBatchView(self.queue_mgr, self.config)
+        self.stack.addWidget(self.view_batch)
+
+        # View 3: History
+        self.view_history = HistoryView(self.db, self.queue_mgr)
+        self.stack.addWidget(self.view_history)
+
+        # View 4: Files Library
+        self.view_files = FilesView(self.db)
+        self.stack.addWidget(self.view_files)
+
+        root_layout.addWidget(self.stack)
+        self.switch_nav(0)
+
+    def create_navbar(self, parent_layout: QVBoxLayout):
+        nav_frame = QFrame()
+        nav_frame.setProperty("segmented", True)
+        n_layout = QHBoxLayout(nav_frame)
+        n_layout.setContentsMargins(4, 4, 4, 4)
+        n_layout.setSpacing(4)
+
+        self.btn_nav_down = QPushButton("Downloader")
+        self.btn_nav_down.setIcon(get_icon("download", Tokens.TEXT_PRIMARY, 15))
+        self.btn_nav_down.setProperty("segmentBtn", True)
+        self.btn_nav_down.clicked.connect(lambda: self.switch_nav(0))
+        n_layout.addWidget(self.btn_nav_down)
+
+        self.btn_nav_queue = QPushButton("Queue")
+        self.btn_nav_queue.setIcon(get_icon("layers", Tokens.TEXT_PRIMARY, 15))
+        self.btn_nav_queue.setProperty("segmentBtn", True)
+        self.btn_nav_queue.clicked.connect(lambda: self.switch_nav(1))
+        n_layout.addWidget(self.btn_nav_queue)
+
+        self.btn_nav_batch = QPushButton("Playlists & Batch")
+        self.btn_nav_batch.setIcon(get_icon("search", Tokens.TEXT_PRIMARY, 15))
+        self.btn_nav_batch.setProperty("segmentBtn", True)
+        self.btn_nav_batch.clicked.connect(lambda: self.switch_nav(2))
+        n_layout.addWidget(self.btn_nav_batch)
+
+        self.btn_nav_hist = QPushButton("History")
+        self.btn_nav_hist.setIcon(get_icon("clock", Tokens.TEXT_PRIMARY, 15))
+        self.btn_nav_hist.setProperty("segmentBtn", True)
+        self.btn_nav_hist.clicked.connect(lambda: self.switch_nav(3))
+        n_layout.addWidget(self.btn_nav_hist)
+
+        self.btn_nav_files = QPushButton("Files")
+        self.btn_nav_files.setIcon(get_icon("folder", Tokens.TEXT_PRIMARY, 15))
+        self.btn_nav_files.setProperty("segmentBtn", True)
+        self.btn_nav_files.clicked.connect(lambda: self.switch_nav(4))
+        n_layout.addWidget(self.btn_nav_files)
+
+        parent_layout.addWidget(nav_frame)
+        self.nav_buttons = [
+            self.btn_nav_down, self.btn_nav_queue, self.btn_nav_batch,
+            self.btn_nav_hist, self.btn_nav_files
+        ]
+
+    def switch_nav(self, index: int):
+        self.stack.setCurrentIndex(index)
+        for i, btn in enumerate(self.nav_buttons):
+            btn.setProperty("checked", i == index)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+        if index == 1:
+            self.view_queue.refresh_table()
+        elif index == 3:
+            self.view_history.refresh_table()
+        elif index == 4:
+            self.view_files.refresh_files()
 
     # --- 1. HEADER ---
     def create_header(self, parent_layout: QVBoxLayout):
@@ -150,7 +229,7 @@ class MainWindow(QMainWindow):
         lbl_title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {Tokens.TEXT_PRIMARY};")
         h_layout.addWidget(lbl_title)
 
-        lbl_ver = QLabel("v2.6.0")
+        lbl_ver = QLabel("v2.7.0")
         lbl_ver.setProperty("muted", True)
         h_layout.addWidget(lbl_ver)
 
@@ -721,8 +800,7 @@ class MainWindow(QMainWindow):
                     app_inst.setLayoutDirection(Qt.LeftToRight)
 
     def open_history(self):
-        dlg = HistoryDialog(self, self.db)
-        dlg.exec()
+        self.switch_nav(3)
 
     def reset_hud(self):
         self.progress_bar.setValue(0)

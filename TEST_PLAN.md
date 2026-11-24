@@ -176,5 +176,18 @@ independent work, and mark Blocked/UNVERIFIED.
 | `test_phase3_media.py` | Presets, Audio Mapping | 3 | 3 | 0 | 0.05s | Builtin & custom user presets, codec mapping |
 | `test_phase4_system.py` | Diagnostics, Redaction, Reset | 3 | 3 | 0 | 0.05s | Password/proxy redaction, diagnostic report generation |
 | `test_phase5_final.py` | E2E Download & Security QA | 3 | 3 | 0 | 0.12s | E2E lifecycle, RTL/LTR layout, path traversal security |
-| **Total Test Suite** | **Full Regression Suite** | **36** | **36** | **0** | **1.28s** | **100% Pass Rate** |
+
+## 14. Phase 2 Verified Test Runs
+
+| Test Suite | Scope | Executed | Passed | Failed | Duration | Evidence / Highlights |
+|---|---|---|---|---|---|---|
+| `test_phase2_management.py` | Queue Lifecycle & Status | 1 | 1 | 0 | 0.04s | Pause, resume, cancel, retry state transitions |
+| `test_phase2_management.py` | Queue Priority & Reorder | 1 | 1 | 0 | 0.03s | Set priority and relative swap reordering verified |
+| `test_phase2_management.py` | Clear Completed | 1 | 1 | 0 | 0.02s | Removes finished jobs while keeping active/pending |
+| `test_phase2_management.py` | Restart Crash Recovery | 1 | 1 | 0 | 0.03s | Active jobs marked 'Interrupted', pending retained safely |
+| `test_phase2_management.py` | History Search & Filtering | 1 | 1 | 0 | 0.04s | Search by title/URL, filter by platform, media type, status |
+| `test_phase2_management.py` | History Relink Moved File | 1 | 1 | 0 | 0.03s | Detect missing on-disk file, relink new valid location |
+| `test_phase2_management.py` | Safe File Rename/Move/Del | 1 | 1 | 0 | 0.04s | Rename syncs DB, move prevents collision via get_unique_path() |
+| `test_phase2_management.py` | Batch Parsing & Duplicates | 1 | 1 | 0 | 0.03s | Syntax cleanup, comment stripping, deduplication detection |
+| **Total Test Suite** | **Full Regression Suite** | **44** | **44** | **0** | **2.81s** | **100% Pass Rate** |
 

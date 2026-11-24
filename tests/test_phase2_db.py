@@ -28,9 +28,9 @@ class TestPhase2Database(unittest.TestCase):
         self.tmpdir.cleanup()
 
     def test_schema_migrations(self):
-        """Verify schema_migrations table is created and version 1 is recorded."""
+        """Verify schema_migrations table is created and version 2 is recorded."""
         version = self.db.get_schema_version()
-        self.assertEqual(version, 1)
+        self.assertEqual(version, 2)
 
     def test_job_crud_and_status(self):
         """Verify adding, updating, and querying jobs."""

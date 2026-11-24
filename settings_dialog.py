@@ -325,7 +325,7 @@ class SettingsDialog(QDialog):
         ffmpeg_stat = "Available" if ffmpeg_bin else "Missing"
 
         c_layout.addWidget(QLabel("Application Version:"), 0, 0)
-        c_layout.addWidget(QLabel("2.6.0 (Pro Desktop)"), 0, 1)
+        c_layout.addWidget(QLabel("2.7.0 (Pro Desktop)"), 0, 1)
 
         c_layout.addWidget(QLabel("yt-dlp Engine:"), 1, 0)
         c_layout.addWidget(QLabel(f"v{ytdlp_ver}"), 1, 1)

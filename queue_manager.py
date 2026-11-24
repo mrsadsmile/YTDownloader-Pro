@@ -37,6 +37,7 @@ class QueueManager(QObject):
     sig_job_completed = Signal(str, dict)     # job_id, result_dict
     sig_job_error = Signal(str, str)          # job_id, error_message
     sig_job_log = Signal(str, str)            # job_id, log_line
+    sig_queue_updated = Signal()
 
     def __init__(self, db: Optional[database.Database] = None, max_concurrent: int = 1):
         super().__init__()
@@ -62,6 +63,7 @@ class QueueManager(QObject):
         job_id = self.db.jobs.add_job(job_data)
         job_data["id"] = job_id
         self.sig_job_enqueued.emit(job_data)
+        self.sig_queue_updated.emit()
         if auto_start:
             self.process_queue()
         return job_id
@@ -71,14 +73,100 @@ class QueueManager(QObject):
         if job_id in self.active_workers:
             worker = self.active_workers[job_id]
             worker.cancel()
+            self.db.jobs.update_status(job_id, "Cancelled", error_message="Cancelled by user.")
+            self.sig_job_status.emit(job_id, "Cancelled")
+            self.sig_queue_updated.emit()
+            return True
+        else:
+            job = self.db.jobs.get_job(job_id)
+            if job and job.get("status") in ("Queued", "Pending", "Paused"):
+                self.db.jobs.update_status(job_id, "Cancelled", error_message="Cancelled by user.")
+                self.sig_job_status.emit(job_id, "Cancelled")
+                self.sig_queue_updated.emit()
+                return True
+        return False
+
+    def pause_job(self, job_id: str) -> bool:
+        """Pauses a running or queued job."""
+        if job_id in self.active_workers:
+            worker = self.active_workers[job_id]
+            worker.cancel()
+            self.db.jobs.update_status(job_id, "Paused")
+            self.sig_job_status.emit(job_id, "Paused")
+            self.sig_queue_updated.emit()
             return True
         else:
             job = self.db.jobs.get_job(job_id)
             if job and job.get("status") in ("Queued", "Pending"):
-                self.db.jobs.update_status(job_id, "Cancelled", error_message="Cancelled by user before start.")
-                self.sig_job_status.emit(job_id, "Cancelled")
+                self.db.jobs.update_status(job_id, "Paused")
+                self.sig_job_status.emit(job_id, "Paused")
+                self.sig_queue_updated.emit()
                 return True
         return False
+
+    def resume_job(self, job_id: str) -> bool:
+        """Resumes a paused or cancelled job."""
+        job = self.db.jobs.get_job(job_id)
+        if job and job.get("status") in ("Paused", "Cancelled", "Interrupted"):
+            self.db.jobs.update_status(job_id, "Queued", error_message="")
+            self.sig_job_status.emit(job_id, "Queued")
+            self.sig_queue_updated.emit()
+            self.process_queue()
+            return True
+        return False
+
+    def retry_job(self, job_id: str) -> bool:
+        """Resets a failed or interrupted job to Queued state."""
+        job = self.db.jobs.get_job(job_id)
+        if job:
+            self.db.jobs.update_status(job_id, "Queued", progress=0.0, error_message="")
+            self.sig_job_status.emit(job_id, "Queued")
+            self.sig_queue_updated.emit()
+            self.process_queue()
+            return True
+        return False
+
+    def remove_job(self, job_id: str) -> bool:
+        """Removes a job completely from the queue database."""
+        if job_id in self.active_workers:
+            self.active_workers[job_id].cancel()
+        res = self.db.jobs.delete_job(job_id)
+        self.sig_queue_updated.emit()
+        return res
+
+    def reorder_job(self, job_id: str, direction: str) -> bool:
+        """Reorders job priority up or down."""
+        res = self.db.jobs.reorder_job(job_id, direction)
+        self.sig_queue_updated.emit()
+        return res
+
+    def pause_all(self):
+        """Pauses all active and pending jobs."""
+        for worker in list(self.active_workers.values()):
+            worker.cancel()
+        self.db.jobs.pause_all()
+        self.sig_queue_updated.emit()
+
+    def resume_all(self):
+        """Resumes all paused jobs to queued."""
+        self.db.jobs.resume_all()
+        self.sig_queue_updated.emit()
+        self.process_queue()
+
+    def cancel_all(self):
+        """Cancels all active, pending, and paused jobs."""
+        for worker in list(self.active_workers.values()):
+            worker.cancel()
+        all_jobs = self.db.jobs.get_all_jobs()
+        for j in all_jobs:
+            if j.get("status") in ("Queued", "Pending", "Downloading", "Paused"):
+                self.db.jobs.update_status(j["id"], "Cancelled", error_message="Cancelled by user.")
+        self.sig_queue_updated.emit()
+
+    def clear_completed(self):
+        """Removes finished, cancelled, and failed jobs from queue."""
+        self.db.jobs.clear_completed()
+        self.sig_queue_updated.emit()
 
     def process_queue(self):
         """Dispatches queued jobs up to max_concurrent capacity."""
@@ -118,7 +206,10 @@ class QueueManager(QObject):
 
     def _on_worker_progress(self, job_id: str, prog: Dict[str, Any]):
         frac = prog.get("fraction", 0.0)
-        self.db.jobs.update_status(job_id, "Downloading", progress=round(frac * 100, 1))
+        speed = prog.get("speed", "--")
+        eta = prog.get("eta", "--")
+        total = prog.get("total_bytes", 0)
+        self.db.jobs.update_status(job_id, "Downloading", progress=round(frac * 100, 1), speed=speed, eta=eta, file_size=total)
         self.sig_job_progress.emit(job_id, prog)
 
     def _on_worker_finished(self, job_id: str, result: Dict[str, Any], job_data: Dict[str, Any]):
@@ -140,13 +231,17 @@ class QueueManager(QObject):
             file_path=out_file,
             media_type=job_data.get("download_type", "Video"),
             file_size=file_size,
-            duration=job_data.get("duration", "--:--")
+            duration=job_data.get("duration", "--:--"),
+            platform=job_data.get("platform", "Web"),
+            format=job_data.get("video_format" if job_data.get("download_type") != "Audio" else "audio_format", "MP4"),
+            quality=job_data.get("video_quality", "Best Available")
         )
 
         if job_id in self.active_workers:
             del self.active_workers[job_id]
 
         self.sig_job_completed.emit(job_id, result)
+        self.sig_queue_updated.emit()
         self.process_queue()
 
     def _on_worker_error(self, job_id: str, error_msg: str):
@@ -155,4 +250,5 @@ class QueueManager(QObject):
             del self.active_workers[job_id]
 
         self.sig_job_error.emit(job_id, error_msg)
+        self.sig_queue_updated.emit()
         self.process_queue()

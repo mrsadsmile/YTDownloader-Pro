@@ -1,6 +1,6 @@
 ; Inno Setup Script for YTDownloader Pro
 #define MyAppName "YTDownloader Pro"
-#define MyAppVersion "2.6.0"
+#define MyAppVersion "2.7.0"
 #define MyAppPublisher "YTDownloader Community"
 #define MyAppExeName "YTDownloader.exe"
 
@@ -22,9 +22,9 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\app_icon.ico
-VersionInfoVersion=2.6.0.0
+VersionInfoVersion=2.7.0.0
 VersionInfoCompany=YTDownloader Community
 VersionInfoDescription=YTDownloader Pro Standalone Installer
 VersionInfoCopyright=Powered by yt-dlp & FFmpeg
