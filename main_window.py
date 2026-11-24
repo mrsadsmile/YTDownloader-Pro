@@ -29,6 +29,9 @@ from queue_view import QueueView
 from playlist_batch_view import PlaylistBatchView
 from history_view import HistoryView
 from files_view import FilesView
+from presets_dialog import PresetsDialog
+from subtitles_dialog import SubtitlesDialog
+import media_tools
 import core
 import database
 
@@ -68,6 +71,8 @@ class MainWindow(QMainWindow):
 
         self.active_media_info: Optional[Dict[str, Any]] = None
         self.last_download_result: Optional[Dict[str, Any]] = None
+        self.subtitles_config: Dict[str, Any] = {}
+        self.current_source_acodec: str = "aac"
 
         self.setWindowTitle("YTDownloader Pro")
         self.resize(960, 740)
@@ -229,7 +234,7 @@ class MainWindow(QMainWindow):
         lbl_title.setStyleSheet(f"font-size: 16px; font-weight: 700; color: {Tokens.TEXT_PRIMARY};")
         h_layout.addWidget(lbl_title)
 
-        lbl_ver = QLabel("v2.7.0")
+        lbl_ver = QLabel("v2.8.0")
         lbl_ver.setProperty("muted", True)
         h_layout.addWidget(lbl_ver)
 
@@ -388,6 +393,11 @@ class MainWindow(QMainWindow):
         self.lbl_prev_subs.setProperty("muted", True)
         meta_row_2.addWidget(self.lbl_prev_subs)
 
+        self.btn_quick_subs = QPushButton("Subtitles...")
+        self.btn_quick_subs.setStyleSheet("padding: 2px 8px; font-size: 11px;")
+        self.btn_quick_subs.clicked.connect(self.open_subtitles_dialog)
+        meta_row_2.addWidget(self.btn_quick_subs)
+
         self.lbl_prev_size = QLabel("Est. Size: --")
         self.lbl_prev_size.setProperty("muted", True)
         meta_row_2.addWidget(self.lbl_prev_size)
@@ -405,6 +415,31 @@ class MainWindow(QMainWindow):
         c_layout = QVBoxLayout(card)
         c_layout.setContentsMargins(18, 16, 18, 16)
         c_layout.setSpacing(14)
+
+        # Quick Presets Bar
+        preset_bar = QHBoxLayout()
+        preset_bar.setSpacing(8)
+
+        lbl_preset = QLabel("Preset Profile:")
+        lbl_preset.setProperty("secondary", True)
+        preset_bar.addWidget(lbl_preset)
+
+        self.cmb_presets = QComboBox()
+        self.refresh_presets_combo()
+        self.cmb_presets.currentIndexChanged.connect(self.on_preset_dropdown_changed)
+        preset_bar.addWidget(self.cmb_presets, 3)
+
+        self.btn_save_preset = QPushButton("Save Preset")
+        self.btn_save_preset.setIcon(get_icon("plus", Tokens.TEXT_PRIMARY, 13))
+        self.btn_save_preset.clicked.connect(self.save_as_preset)
+        preset_bar.addWidget(self.btn_save_preset)
+
+        self.btn_manage_presets = QPushButton("Presets...")
+        self.btn_manage_presets.setIcon(get_icon("sliders", Tokens.TEXT_PRIMARY, 13))
+        self.btn_manage_presets.clicked.connect(self.open_presets_dialog)
+        preset_bar.addWidget(self.btn_manage_presets)
+
+        c_layout.addLayout(preset_bar)
 
         # Mode Selection (Segmented Control)
         mode_header = QHBoxLayout()
@@ -487,7 +522,33 @@ class MainWindow(QMainWindow):
         self.col_audio_quality.addWidget(self.cmb_audio_quality)
         grid_layout.addLayout(self.col_audio_quality)
 
+        # Audio Sample Rate Column
+        self.col_audio_sample_rate = QVBoxLayout()
+        self.lbl_a_sample_rate = QLabel("Sample Rate:")
+        self.lbl_a_sample_rate.setProperty("secondary", True)
+        self.cmb_audio_sample_rate = QComboBox()
+        self.cmb_audio_sample_rate.addItems(["Auto", "44.1 kHz", "48 kHz", "96 kHz"])
+        self.col_audio_sample_rate.addWidget(self.lbl_a_sample_rate)
+        self.col_audio_sample_rate.addWidget(self.cmb_audio_sample_rate)
+        grid_layout.addLayout(self.col_audio_sample_rate)
+
+        # Audio Channels Column
+        self.col_audio_channels = QVBoxLayout()
+        self.lbl_a_channels = QLabel("Channels:")
+        self.lbl_a_channels.setProperty("secondary", True)
+        self.cmb_audio_channels = QComboBox()
+        self.cmb_audio_channels.addItems(["Auto", "Stereo (2ch)", "Mono (1ch)"])
+        self.col_audio_channels.addWidget(self.lbl_a_channels)
+        self.col_audio_channels.addWidget(self.cmb_audio_channels)
+        grid_layout.addLayout(self.col_audio_channels)
+
         c_layout.addWidget(self.settings_grid_frame)
+
+        self.lbl_lossless_warning = QLabel("")
+        self.lbl_lossless_warning.setStyleSheet(f"color: {Tokens.WARNING}; font-size: 12px; padding: 2px 4px;")
+        self.lbl_lossless_warning.setWordWrap(True)
+        self.lbl_lossless_warning.setVisible(False)
+        c_layout.addWidget(self.lbl_lossless_warning)
 
         # Save Directory Row
         dir_layout = QHBoxLayout()
@@ -548,9 +609,25 @@ class MainWindow(QMainWindow):
         self.chk_adv_metadata.setChecked(self.config.get("embed_metadata", True))
         b_layout.addWidget(self.chk_adv_metadata)
 
+        self.chk_adv_thumbnail = QCheckBox("Embed video thumbnail as cover art")
+        self.chk_adv_thumbnail.setChecked(self.config.get("download_thumbnail", False))
+        b_layout.addWidget(self.chk_adv_thumbnail)
+
         self.chk_adv_sponsor = QCheckBox("SponsorBlock: Automatically remove sponsored segments")
         self.chk_adv_sponsor.setChecked(self.config.get("sponsorblock_enabled", False))
         b_layout.addWidget(self.chk_adv_sponsor)
+
+        sub_row = QHBoxLayout()
+        self.lbl_adv_subs_status = QLabel("Subtitles: Default settings (en, fa)")
+        self.lbl_adv_subs_status.setProperty("secondary", True)
+        sub_row.addWidget(self.lbl_adv_subs_status)
+        sub_row.addStretch()
+
+        self.btn_manage_subs = QPushButton("Subtitle Manager...")
+        self.btn_manage_subs.setIcon(get_icon("film", Tokens.TEXT_PRIMARY, 14))
+        self.btn_manage_subs.clicked.connect(self.open_subtitles_dialog)
+        sub_row.addWidget(self.btn_manage_subs)
+        b_layout.addLayout(sub_row)
 
         self.adv_body.setVisible(False)
         a_layout.addWidget(self.adv_body)
@@ -614,6 +691,12 @@ class MainWindow(QMainWindow):
         self.btn_download.setFixedHeight(40)
         self.btn_download.clicked.connect(self.start_download)
         actions_row.addWidget(self.btn_download, 3)
+
+        self.btn_enqueue = QPushButton("Add to Queue")
+        self.btn_enqueue.setIcon(get_icon("layers", Tokens.TEXT_PRIMARY, 15))
+        self.btn_enqueue.setFixedHeight(40)
+        self.btn_enqueue.clicked.connect(self.enqueue_from_downloader)
+        actions_row.addWidget(self.btn_enqueue, 2)
 
         self.btn_open_file = QPushButton("Open File")
         self.btn_open_file.setIcon(get_icon("play", Tokens.TEXT_PRIMARY, 16))
@@ -690,6 +773,14 @@ class MainWindow(QMainWindow):
             w = self.col_audio_quality.itemAt(i).widget()
             if w:
                 w.setVisible(show_audio)
+        for i in range(self.col_audio_sample_rate.count()):
+            w = self.col_audio_sample_rate.itemAt(i).widget()
+            if w:
+                w.setVisible(show_audio)
+        for i in range(self.col_audio_channels.count()):
+            w = self.col_audio_channels.itemAt(i).widget()
+            if w:
+                w.setVisible(show_audio)
 
         self.config["download_type"] = mode
         core.save_config(self.config)
@@ -757,6 +848,159 @@ class MainWindow(QMainWindow):
             self.lbl_a_quality.setText("Audio Bitrate: (Lossless / Source)")
         else:
             self.lbl_a_quality.setText("Audio Bitrate:")
+
+        # Lossless conversion warning
+        warn = media_tools.get_lossless_warning(self.current_source_acodec, fmt)
+        if warn:
+            self.lbl_lossless_warning.setText(f"⚠ {warn}")
+            self.lbl_lossless_warning.setVisible(True)
+        else:
+            self.lbl_lossless_warning.setVisible(False)
+
+    def refresh_presets_combo(self):
+        self.cmb_presets.blockSignals(True)
+        self.cmb_presets.clear()
+        self.cmb_presets.addItem("Manual Configuration", None)
+        all_p = media_tools.PresetManager.get_all_presets()
+        for name, conf in all_p.items():
+            tag = " [Built-in]" if conf.get("builtin") else ""
+            self.cmb_presets.addItem(f"{name}{tag}", conf)
+        self.cmb_presets.blockSignals(False)
+
+    def on_preset_dropdown_changed(self, idx: int):
+        conf = self.cmb_presets.currentData()
+        if conf and isinstance(conf, dict):
+            self.apply_preset_dict(conf)
+
+    def apply_preset_dict(self, conf: Dict[str, Any]):
+        m = conf.get("download_type", "Video")
+        self.set_download_mode(m)
+
+        idx_vq = self.cmb_video_quality.findText(conf.get("video_quality", "Best Available"))
+        if idx_vq >= 0:
+            self.cmb_video_quality.setCurrentIndex(idx_vq)
+        idx_vf = self.cmb_video_format.findText(conf.get("video_format", "MP4"))
+        if idx_vf >= 0:
+            self.cmb_video_format.setCurrentIndex(idx_vf)
+
+        idx_af = self.cmb_audio_format.findText(conf.get("audio_format", "MP3"))
+        if idx_af >= 0:
+            self.cmb_audio_format.setCurrentIndex(idx_af)
+        idx_aq = self.cmb_audio_quality.findText(conf.get("audio_quality", "320 kbps"))
+        if idx_aq >= 0:
+            self.cmb_audio_quality.setCurrentIndex(idx_aq)
+        idx_sr = self.cmb_audio_sample_rate.findText(conf.get("audio_sample_rate", "Auto"))
+        if idx_sr >= 0:
+            self.cmb_audio_sample_rate.setCurrentIndex(idx_sr)
+        idx_ch = self.cmb_audio_channels.findText(conf.get("audio_channels", "Auto"))
+        if idx_ch >= 0:
+            self.cmb_audio_channels.setCurrentIndex(idx_ch)
+
+        if "embed_metadata" in conf:
+            self.chk_adv_metadata.setChecked(bool(conf["embed_metadata"]))
+        if "download_thumbnail" in conf and hasattr(self, "chk_adv_thumbnail"):
+            self.chk_adv_thumbnail.setChecked(bool(conf["download_thumbnail"]))
+        if "sponsorblock_enabled" in conf:
+            self.chk_adv_sponsor.setChecked(bool(conf["sponsorblock_enabled"]))
+        if "download_subtitles" in conf:
+            self.subtitles_config["download_subtitles"] = bool(conf["download_subtitles"])
+            if "embed_subtitles" in conf:
+                self.subtitles_config["embed_subtitles"] = bool(conf["embed_subtitles"])
+
+    def save_as_preset(self):
+        from PySide6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(self, "Save Preset", "Enter a name for this custom preset:")
+        if ok and name.strip():
+            conf = {
+                "download_type": "Audio" if self.btn_mode_audio.property("checked") else ("Dual Mode" if self.btn_mode_dual.property("checked") else "Video"),
+                "video_quality": self.cmb_video_quality.currentText(),
+                "video_format": self.cmb_video_format.currentText(),
+                "audio_format": self.cmb_audio_format.currentText(),
+                "audio_quality": self.cmb_audio_quality.currentText(),
+                "audio_sample_rate": self.cmb_audio_sample_rate.currentText(),
+                "audio_channels": self.cmb_audio_channels.currentText(),
+                "embed_metadata": self.chk_adv_metadata.isChecked(),
+                "download_thumbnail": self.chk_adv_thumbnail.isChecked() if hasattr(self, "chk_adv_thumbnail") else False,
+                "sponsorblock_enabled": self.chk_adv_sponsor.isChecked(),
+                "download_subtitles": self.subtitles_config.get("download_subtitles", False)
+            }
+            succ, msg = media_tools.PresetManager.save_preset(name.strip(), conf)
+            if succ:
+                self.refresh_presets_combo()
+                for i in range(self.cmb_presets.count()):
+                    if name.strip() in self.cmb_presets.itemText(i):
+                        self.cmb_presets.setCurrentIndex(i)
+                        break
+                QMessageBox.information(self, "Preset Saved", msg)
+            else:
+                QMessageBox.warning(self, "Error", msg)
+
+    def open_presets_dialog(self):
+        dlg = PresetsDialog(self)
+        dlg.sig_preset_selected.connect(self.apply_preset_dict)
+        if dlg.exec():
+            self.refresh_presets_combo()
+
+    def open_subtitles_dialog(self):
+        dlg = SubtitlesDialog(self.active_media_info or {}, self.subtitles_config, self)
+        dlg.sig_subtitles_configured.connect(self.on_subtitles_configured)
+        dlg.exec()
+
+    def on_subtitles_configured(self, cfg: Dict[str, Any]):
+        self.subtitles_config.update(cfg)
+        langs = cfg.get("subtitle_lang", "")
+        if not cfg.get("download_subtitles") or not langs:
+            self.lbl_prev_subs.setText("Subtitles: Disabled")
+            self.lbl_adv_subs_status.setText("Subtitles: Disabled")
+        else:
+            mode_desc = "Embed" if cfg.get("embed_subtitles") else ("Sub-only" if cfg.get("sub_only") else "Separate")
+            self.lbl_prev_subs.setText(f"Subtitles: {langs} ({mode_desc})")
+            self.lbl_adv_subs_status.setText(f"Subtitles: {langs} ({mode_desc})")
+
+    def enqueue_from_downloader(self):
+        url = self.txt_url.text().strip()
+        is_valid, _ = core.validate_url(url)
+        if not is_valid:
+            QMessageBox.warning(self, "Invalid URL", "Please enter a valid media URL before adding to queue.")
+            return
+
+        mode = "Video"
+        if self.btn_mode_audio.property("checked"):
+            mode = "Audio"
+        elif self.btn_mode_dual.property("checked"):
+            mode = "Dual Mode"
+
+        title = self.active_media_info.get("title", "Untitled Media") if self.active_media_info else "Queued Media"
+        thumb = self.active_media_info.get("thumbnail") if self.active_media_info else None
+        platform = self.active_media_info.get("platform", "Web") if self.active_media_info else "Web"
+
+        job_id = self.queue_mgr.enqueue_job(
+            url=url,
+            title=title,
+            download_type=mode,
+            video_quality=self.cmb_video_quality.currentText(),
+            video_format=self.cmb_video_format.currentText(),
+            audio_format=self.cmb_audio_format.currentText(),
+            audio_quality=self.cmb_audio_quality.currentText(),
+            destination=self.txt_path.text().strip(),
+            thumbnail=thumb,
+            platform=platform,
+            extra_params={
+                "audio_sample_rate": self.cmb_audio_sample_rate.currentText(),
+                "audio_channels": self.cmb_audio_channels.currentText(),
+                "embed_metadata": self.chk_adv_metadata.isChecked(),
+                "download_thumbnail": self.chk_adv_thumbnail.isChecked() if hasattr(self, "chk_adv_thumbnail") else True,
+                "sponsorblock_enabled": self.chk_adv_sponsor.isChecked(),
+                "sponsorblock_categories": self.config.get("sponsorblock_categories"),
+                "filename_template": self.config.get("filename_template"),
+                "download_subtitles": self.subtitles_config.get("download_subtitles", False),
+                "subtitle_lang": self.subtitles_config.get("subtitle_lang"),
+                "embed_subtitles": self.subtitles_config.get("embed_subtitles", False),
+                "sub_only": self.subtitles_config.get("sub_only", False),
+                "subtitle_format": self.subtitles_config.get("subtitle_format", "srt")
+            }
+        )
+        QMessageBox.information(self, "Added to Queue", f"Job '{title[:50]}' was added to the download queue.")
 
     def open_downloaded_file(self):
         if not self.last_download_result:
@@ -862,8 +1106,10 @@ class MainWindow(QMainWindow):
         # Codecs & FPS
         v_c = "/".join(data.get("vcodecs", ["Auto"]))
         a_c = "/".join(data.get("acodecs", ["Auto"]))
+        self.current_source_acodec = a_c
         fps_info = f" • {data['fps']}fps" if data.get("fps") else ""
         self.lbl_prev_codecs.setText(f"Codecs: {v_c} / {a_c}{fps_info}")
+        self.on_audio_format_changed(self.cmb_audio_format.currentText())
 
         # Subtitles
         subs = data.get("subtitles", [])
@@ -922,6 +1168,7 @@ class MainWindow(QMainWindow):
         elif self.btn_mode_dual.property("checked"):
             mode = "Dual Mode"
 
+        subs_cfg = self.subtitles_config
         params = {
             "url": url,
             "download_path": save_path,
@@ -930,10 +1177,20 @@ class MainWindow(QMainWindow):
             "video_format": self.cmb_video_format.currentText(),
             "audio_format": self.cmb_audio_format.currentText(),
             "audio_quality": self.cmb_audio_quality.currentText(),
+            "audio_sample_rate": self.cmb_audio_sample_rate.currentText(),
+            "audio_channels": self.cmb_audio_channels.currentText(),
             "proxy_enabled": self.config.get("proxy_enabled", False),
             "proxy_url": self.config.get("proxy_url"),
             "embed_metadata": self.chk_adv_metadata.isChecked(),
+            "download_thumbnail": self.chk_adv_thumbnail.isChecked() if hasattr(self, "chk_adv_thumbnail") else True,
             "sponsorblock_enabled": self.chk_adv_sponsor.isChecked(),
+            "sponsorblock_categories": self.config.get("sponsorblock_categories", ["sponsor", "selfpromo", "interaction", "intro", "outro"]),
+            "filename_template": self.config.get("filename_template", "%(title)s.%(ext)s"),
+            "download_subtitles": subs_cfg.get("download_subtitles", self.config.get("download_subtitles", False)),
+            "subtitle_lang": subs_cfg.get("subtitle_lang", self.config.get("subtitle_lang", "en,fa")),
+            "embed_subtitles": subs_cfg.get("embed_subtitles", self.config.get("embed_subtitles", False)),
+            "sub_only": subs_cfg.get("sub_only", False),
+            "subtitle_format": subs_cfg.get("subtitle_format", "srt")
         }
 
         self.btn_download.setText("Start Download")

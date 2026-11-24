@@ -6,6 +6,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.8.0] - Phase 3: Media Tools, Audio Extraction, Subtitles, SponsorBlock & Presets Milestone
+
+### Added
+- **Advanced Audio Extraction & Processing Pipeline (`media_tools.py`)**:
+  - Full codec support: MP3, M4A, OPUS, WAV, and FLAC.
+  - Granular audio controls: Bitrate (128k, 192k, 256k, 320k), Sample Rate (`Auto`, `44.1 kHz`, `48 kHz`, `96 kHz`), and Channels (`Auto`, `Stereo (2ch)`, `Mono (1ch)`).
+  - Original Audio Stream ("Best Available (Original)") extraction without transcoding quality loss.
+  - Educational Lossless Conversion Warning: Dynamic UI banner alerting users that converting lossy web audio (AAC/Opus) to FLAC/WAV will not restore studio fidelity and only inflates filesize.
+  - Safe FFmpeg audio extraction with atomic temporary output files and zero-byte output protection.
+- **Comprehensive Subtitle Manager (`subtitles_dialog.py`, `media_tools.py`)**:
+  - Distinguishes creator-verified Manual Subtitles from Auto-Generated Captions.
+  - Multi-language selection with instant counter badge.
+  - Delivery modes: Separate subtitle file (.srt/.vtt) alongside video, Subtitle-Only download (skips video stream), and Subtitle Embedding into MP4/MKV video containers via FFmpeg without re-encoding video.
+  - Format choices: SRT (SubRip), VTT (WebVTT), and ASS (Advanced SubStation Alpha).
+  - Non-destructive embedding: preserves original video if subtitle post-processing fails.
+- **SponsorBlock Integration (`media_tools.py`, `settings_dialog.py`)**:
+  - Official SponsorBlock API integration (`https://sponsor.ajay.app`) with YouTube video ID parser and network timeout handling.
+  - Granular category selection for all 8 official categories: Sponsor, Self-Promotion, Interaction Reminders, Intro/Intermission, Outro/End Cards, Preview/Recap, Filler/Tangent, and Music Video Off-topic sections.
+  - Select All / Deselect All category toggles in Settings.
+- **Smart Download Presets Engine (`presets_dialog.py`, `media_tools.py`)**:
+  - 8 built-in production presets: `Best Available (Auto)`, `1080p Full HD (MP4)`, `4K Ultra HD (MKV)`, `Social Media (720p MP4)`, `High Quality Audio (320k MP3)`, `Voice & Podcast (128k MP3)`, `Lossless Master (FLAC)`, `Archive (Original Stream)`.
+  - Preset Selector toolbar in the Downloader interface for one-click configuration.
+  - Custom preset creation, editing, duplicating, and deleting.
+  - Preset JSON export and secure JSON import: strict key sanitization against unauthorized parameters or shell injection attempts.
+- **Configurable Filename Templates**:
+  - Safe variable expansion: `{title}`, `{uploader}`, `{upload_date}`, `{id}`, `{playlist_title}`, `{playlist_index}`, `{resolution}`.
+  - OS filename sanitization and strict path traversal protection (`..` neutralizing).
+- **Direct Queue Integration**:
+  - "Add to Queue" button directly in the Downloader view with unified Phase 3 parameters.
+- **Automated Test Suite Expansion**:
+  - Added 9 new unit, integration, and GUI tests (`tests/test_phase3_advanced.py`), bringing the total test suite to 53 passing tests (100% pass rate).
+
+---
+
 ## [2.7.0] - Phase 2: Download Management, Queue, Playlists, Batch & Files Milestone
 
 ### Added

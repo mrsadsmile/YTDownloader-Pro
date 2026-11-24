@@ -189,5 +189,22 @@ independent work, and mark Blocked/UNVERIFIED.
 | `test_phase2_management.py` | History Relink Moved File | 1 | 1 | 0 | 0.03s | Detect missing on-disk file, relink new valid location |
 | `test_phase2_management.py` | Safe File Rename/Move/Del | 1 | 1 | 0 | 0.04s | Rename syncs DB, move prevents collision via get_unique_path() |
 | `test_phase2_management.py` | Batch Parsing & Duplicates | 1 | 1 | 0 | 0.03s | Syntax cleanup, comment stripping, deduplication detection |
-| **Total Test Suite** | **Full Regression Suite** | **44** | **44** | **0** | **2.81s** | **100% Pass Rate** |
+
+## 15. Phase 3 Verified Test Runs
+
+| Test Suite | Scope | Executed | Passed | Failed | Duration | Evidence / Highlights |
+|---|---|---|---|---|---|---|
+| `test_phase3_media.py` | Audio Codec Mapping | 1 | 1 | 0 | 0.02s | MP3, M4A, OPUS, WAV, FLAC bitrate vs lossless flags |
+| `test_phase3_media.py` | Built-in Presets | 1 | 1 | 0 | 0.02s | 1080p, 4K, Podcast, FLAC, Mobile presets verified |
+| `test_phase3_media.py` | Custom User Presets | 1 | 1 | 0 | 0.02s | Save and delete custom user presets |
+| `test_phase3_advanced.py` | Audio FFmpeg Args Builder | 1 | 1 | 0 | 0.03s | Sample rate (44.1/48/96kHz), channels (mono/stereo), bitrate flags |
+| `test_phase3_advanced.py` | Lossless Warning | 1 | 1 | 0 | 0.02s | Warns lossy-to-FLAC conversion does not restore fidelity |
+| `test_phase3_advanced.py` | Subtitle Parsing | 1 | 1 | 0 | 0.02s | Differentiates manual vs auto-generated subtitles |
+| `test_phase3_advanced.py` | SponsorBlock API & YouTube ID | 1 | 1 | 0 | 0.03s | Regex ID extraction, API segment parsing, 404 safety |
+| `test_phase3_advanced.py` | Preset Lifecycle & Sanitization | 1 | 1 | 0 | 0.04s | Duplicate, JSON export/import, malicious key stripping |
+| `test_phase3_advanced.py` | Filename Template & Traversal | 1 | 1 | 0 | 0.03s | Token variables substitution and path traversal defense |
+| `test_phase3_advanced.py` | SubtitlesDialog GUI | 1 | 1 | 0 | 0.08s | Subtitles dialog creation, language checkboxes |
+| `test_phase3_advanced.py` | PresetsDialog GUI | 1 | 1 | 0 | 0.08s | Presets dialog creation, list of presets |
+| `test_phase3_advanced.py` | Pipeline Missing File Safety | 1 | 1 | 0 | 0.02s | Safe non-destructive failure on missing inputs |
+| **Total Test Suite** | **Full Regression Suite** | **53** | **53** | **0** | **4.87s** | **100% Pass Rate** |
 

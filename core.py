@@ -444,7 +444,7 @@ def generate_diagnostic_report() -> str:
     lines = [
         "=== YTDownloader Pro Diagnostic Report ===",
         f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Application Version: 2.7.0 (Pro Desktop)",
+        f"Application Version: 2.8.0 (Pro Desktop)",
         f"Operating System: {sys.platform} ({os.name})",
         f"Python Version: {sys.version.split()[0]} ({'64-bit' if sys.maxsize > 2**32 else '32-bit'})",
         f"PySide6 Framework Version: {getattr(sys.modules.get('PySide6'), '__version__', '6.12.0')}",
@@ -469,15 +469,20 @@ DEFAULT_CONFIG = {
     "video_format": "MP4",
     "audio_format": "MP3",
     "audio_quality": "320 kbps",
+    "audio_sample_rate": "Auto",
+    "audio_channels": "Auto",
     "proxy_enabled": False,
     "proxy_url": "http://127.0.0.1:10809",
     "cookie_file": "",
     "sponsorblock_enabled": False,
+    "sponsorblock_categories": ["sponsor", "selfpromo", "interaction", "intro", "outro"],
     "embed_metadata": True,
     "download_thumbnail": False,
     "download_subtitles": False,
     "subtitle_lang": "en,fa",
     "embed_subtitles": False,
+    "subtitle_format": "srt",
+    "sub_only": False,
     "clipboard_monitor": False,
     "filename_template": "%(title)s.%(ext)s"
 }
@@ -662,8 +667,13 @@ class InspectWorker(QThread):
                 auto_subs = info.get("automatic_captions") or {}
                 all_subs = sorted(list(set(list(subs.keys()) + list(auto_subs.keys()))))
 
+                # Detailed subtitles categorizing manual vs auto
+                import media_tools
+                subtitles_detailed = media_tools.parse_media_subtitles(info)
+
                 payload = {
                     "url": cleaned,
+                    "id": info.get("id", ""),
                     "title": title or "Untitled Media",
                     "uploader": uploader or "Unknown Creator",
                     "duration": dur_str,
@@ -682,7 +692,16 @@ class InspectWorker(QThread):
                     "acodecs": sorted(list(acodecs)) if acodecs else ["Auto"],
                     "audio_formats": audio_formats if audio_formats else ["mp3", "m4a"],
                     "subtitles": all_subs[:6],
-                    "estimated_size": total_filesize
+                    "subtitles_detailed": subtitles_detailed,
+                    "estimated_size": total_filesize,
+                    "raw_info": {
+                        "id": info.get("id"),
+                        "title": title,
+                        "uploader": uploader,
+                        "subtitles": subs,
+                        "automatic_captions": auto_subs,
+                        "acodec": info.get("acodec")
+                    }
                 }
                 if not (self.cancel_requested or self.isInterruptionRequested()):
                     self.sig_completed.emit(payload)
@@ -841,9 +860,10 @@ class DownloadWorker(QThread):
             ydl_opts.setdefault("postprocessors", []).append({"key": "FFmpegMetadata"})
 
         if self.params.get("sponsorblock_enabled"):
+            sb_cats = self.params.get("sponsorblock_categories") or ["sponsor", "selfpromo", "interaction", "intro", "outro"]
             ydl_opts.setdefault("postprocessors", []).append({
                 "key": "SponsorBlock",
-                "categories": ["sponsor", "selfpromo", "interaction", "intro", "outro"],
+                "categories": sb_cats,
                 "when": "after_filter"
             })
 
@@ -853,8 +873,12 @@ class DownloadWorker(QThread):
             ydl_opts["writeautomaticsub"] = True
             sub_lang = str(self.params.get("subtitle_lang", "en,fa")).split(",")
             ydl_opts["subtitleslangs"] = [s.strip() for s in sub_lang if s.strip()]
-            ydl_opts["subtitlesformat"] = "srt/best"
-            if self.params.get("embed_subtitles") and v_format in ("mp4", "mkv"):
+            sub_fmt = self.params.get("subtitle_format", "srt")
+            ydl_opts["subtitlesformat"] = f"{sub_fmt}/best"
+            if self.params.get("sub_only"):
+                ydl_opts["skip_download"] = True
+                self.sig_log.emit("[SUBTITLES] Subtitle-only mode active: skipping media download.")
+            elif self.params.get("embed_subtitles") and v_format in ("mp4", "mkv"):
                 ydl_opts.setdefault("postprocessors", []).append({"key": "FFmpegEmbedSubtitle"})
 
         # Thumbnail configuration
@@ -894,25 +918,16 @@ class DownloadWorker(QThread):
                 base_path, _ = os.path.splitext(candidate_file)
                 extracted_audio_file = f"{base_path}.{a_format}"
 
-                bitrate_flag = "320k"
-                if "256" in a_quality:
-                    bitrate_flag = "256k"
-                elif "192" in a_quality:
-                    bitrate_flag = "192k"
-                elif "128" in a_quality:
-                    bitrate_flag = "128k"
+                import media_tools
+                sample_rate = self.params.get("audio_sample_rate", "Auto")
+                channels = self.params.get("audio_channels", "Auto")
+                audio_args, _ = media_tools.build_audio_ffmpeg_args(a_format, a_quality, sample_rate, channels)
 
-                codec, uses_bitrate = get_audio_codec_info(a_format)
                 cmd = [
                     ffmpeg_bin or "ffmpeg",
                     "-y",
                     "-i", candidate_file,
-                    "-vn",
-                    "-c:a", codec
-                ]
-                if uses_bitrate:
-                    cmd.extend(["-b:a", bitrate_flag])
-                cmd.append(extracted_audio_file)
+                ] + audio_args + [extracted_audio_file]
                 res = subprocess.run(
                     cmd,
                     stdout=subprocess.PIPE,

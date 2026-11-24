@@ -261,6 +261,19 @@ class SettingsDialog(QDialog):
         self.chk_embed_metadata = QCheckBox("Embed media metadata tags into output files")
         layout.addWidget(self.chk_embed_metadata)
 
+        # Filename Template
+        lbl_tmpl = QLabel("Filename Naming Template:")
+        lbl_tmpl.setProperty("secondary", True)
+        layout.addWidget(lbl_tmpl)
+
+        self.txt_template = QLineEdit()
+        self.txt_template.setPlaceholderText("%(title)s.%(ext)s")
+        layout.addWidget(self.txt_template)
+
+        lbl_tmpl_hint = QLabel("Supported tokens: %(title)s, %(uploader)s, %(upload_date)s, %(id)s, %(playlist_index)s")
+        lbl_tmpl_hint.setProperty("muted", True)
+        layout.addWidget(lbl_tmpl_hint)
+
         # Cookie File Selector
         lbl_cookie = QLabel("Netscape Cookies File (Optional, for private media/memberships):")
         lbl_cookie.setProperty("secondary", True)
@@ -288,8 +301,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.chk_sponsor)
 
         lbl_desc = QLabel(
-            "SponsorBlock uses a community database to detect and skip sponsored segments, "
-            "self-promotions, and intermission fillers in YouTube videos."
+            "SponsorBlock uses an official community database (sponsor.ajay.app) to detect and skip sponsored "
+            "segments, promotions, and fillers in YouTube videos. Note: Only YouTube videos are supported by this API."
         )
         lbl_desc.setProperty("secondary", True)
         lbl_desc.setWordWrap(True)
@@ -298,14 +311,33 @@ class SettingsDialog(QDialog):
         card = QFrame()
         card.setProperty("card", "elevated")
         c_layout = QVBoxLayout(card)
-        c_layout.setContentsMargins(12, 12, 12, 12)
-        c_layout.addWidget(QLabel("Active Categories:"))
-        c_layout.addWidget(QLabel("• Sponsored Segments"))
-        c_layout.addWidget(QLabel("• Self-Promotion / Channel Ads"))
-        c_layout.addWidget(QLabel("• Interaction Reminders (Subscribe / Like)"))
-        c_layout.addWidget(QLabel("• Intro / Outro Cards"))
-        layout.addWidget(card)
+        c_layout.setContentsMargins(14, 12, 14, 12)
+        c_layout.setSpacing(8)
 
+        lbl_cat_title = QLabel("Select Categories to Cut:")
+        lbl_cat_title.setStyleSheet(f"font-weight: 700; color: {Tokens.TEXT_PRIMARY};")
+        c_layout.addWidget(lbl_cat_title)
+
+        import media_tools
+        self.sb_category_boxes = {}
+        for cat_key, cat_label in media_tools.SPONSORBLOCK_CATEGORIES.items():
+            cb = QCheckBox(cat_label)
+            self.sb_category_boxes[cat_key] = cb
+            c_layout.addWidget(cb)
+
+        # Quick select buttons
+        btn_row = QHBoxLayout()
+        btn_sel_all = QPushButton("Select All")
+        btn_sel_all.clicked.connect(lambda: [cb.setChecked(True) for cb in self.sb_category_boxes.values()])
+        btn_row.addWidget(btn_sel_all)
+
+        btn_desel_all = QPushButton("Deselect All")
+        btn_desel_all.clicked.connect(lambda: [cb.setChecked(False) for cb in self.sb_category_boxes.values()])
+        btn_row.addWidget(btn_desel_all)
+        btn_row.addStretch()
+        c_layout.addLayout(btn_row)
+
+        layout.addWidget(card)
         layout.addStretch()
 
     def setup_engine_tab(self):
@@ -325,7 +357,7 @@ class SettingsDialog(QDialog):
         ffmpeg_stat = "Available" if ffmpeg_bin else "Missing"
 
         c_layout.addWidget(QLabel("Application Version:"), 0, 0)
-        c_layout.addWidget(QLabel("2.7.0 (Pro Desktop)"), 0, 1)
+        c_layout.addWidget(QLabel("2.8.0 (Pro Desktop)"), 0, 1)
 
         c_layout.addWidget(QLabel("yt-dlp Engine:"), 1, 0)
         c_layout.addWidget(QLabel(f"v{ytdlp_ver}"), 1, 1)
@@ -459,10 +491,14 @@ class SettingsDialog(QDialog):
         self.cmb_def_a_format.setCurrentText(self.config.get("audio_format", "MP3"))
         self.cmb_def_a_quality.setCurrentText(self.config.get("audio_quality", "320 kbps"))
         self.chk_embed_metadata.setChecked(self.config.get("embed_metadata", True))
+        self.txt_template.setText(self.config.get("filename_template", "%(title)s.%(ext)s"))
         self.txt_cookie.setText(self.config.get("cookie_file", ""))
 
         # Sponsor
         self.chk_sponsor.setChecked(self.config.get("sponsorblock_enabled", False))
+        active_cats = self.config.get("sponsorblock_categories", ["sponsor", "selfpromo", "interaction", "intro", "outro"])
+        for cat_k, cb in getattr(self, "sb_category_boxes", {}).items():
+            cb.setChecked(cat_k in active_cats)
 
     def save_and_accept(self):
         self.config["language"] = "fa" if self.cmb_lang.currentIndex() == 1 else "en"
@@ -481,10 +517,16 @@ class SettingsDialog(QDialog):
         self.config["audio_format"] = self.cmb_def_a_format.currentText()
         self.config["audio_quality"] = self.cmb_def_a_quality.currentText()
         self.config["embed_metadata"] = self.chk_embed_metadata.isChecked()
+        self.config["filename_template"] = self.txt_template.text().strip() or "%(title)s.%(ext)s"
         self.config["cookie_file"] = self.txt_cookie.text().strip()
 
         # Sponsor
         self.config["sponsorblock_enabled"] = self.chk_sponsor.isChecked()
+        selected_cats = [k for k, cb in getattr(self, "sb_category_boxes", {}).items() if cb.isChecked()]
+        self.config["sponsorblock_categories"] = selected_cats
+
+        core.save_config(self.config)
+        self.accept()
 
         core.save_config(self.config)
         self.accept()

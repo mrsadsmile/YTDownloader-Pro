@@ -70,16 +70,17 @@ based on this template or previous claims.
 
   Feature                                 Status    Evidence / notes
   --------------------------------------- --------- ------------------
-  Audio formats and quality controls      Tested    get_audio_codec_info() handles MP3, M4A, OPUS, WAV, FLAC
-  Metadata and cover art                  Tested    FFmpegMetadata & EmbedThumbnail postprocessors configured
-  Manual/automatic subtitle discovery     Tested    InspectWorker discovers available manual & auto subtitles
-  Subtitle language and format handling   Tested    subtitleslangs filter and srt/best formatting implemented
-  Subtitle-only download/embedding        Tested    FFmpegEmbedSubtitle integrated for MP4/MKV video containers
-  SponsorBlock API and real behavior      Tested    SponsorBlock postprocessor with sponsor/intro/outro categories
-  Built-in/custom presets                 Tested    5 built-in presets (1080p, 4K, Podcast, FLAC, Mobile)
-  Preset import/export/validation         Tested    save_user_preset() and delete_user_preset() tested & working
-  Safe media-processing pipeline          Tested    Safe argument arrays, non-zero verification, original preserved
-  Phase 3 tests/regression                Tested    23 automated unit, GUI & integration tests passing (0.95s)
+  Audio formats and quality controls      Tested    MP3, M4A, OPUS, WAV, FLAC; build_audio_ffmpeg_args() with sample rates (44.1/48/96kHz), channels (mono/stereo), bitrates (128-320k)
+  Lossless fidelity verification          Tested    get_lossless_warning() warns when converting web lossy sources (AAC/Opus) to FLAC/WAV; UI dynamic warning active
+  Metadata and cover art                  Tested    FFmpegMetadata, EmbedThumbnail, and album cover art extraction verified
+  Manual/automatic subtitle discovery     Tested    parse_media_subtitles() categorizes manual vs auto-generated subtitles with language codes and formats
+  Subtitle language and format handling   Tested    SubtitlesDialog allows multi-language selection, formats (SRT, VTT, ASS), and custom language filters
+  Subtitle-only download/embedding        Tested    Supports separate subtitle files, subtitle-only mode (skip_download), and FFmpegEmbedSubtitle into MP4/MKV
+  SponsorBlock API and real behavior      Tested    Official SponsorBlock API integration (fetch_sponsorblock_segments), YouTube ID extraction, and all 8 categories configurable
+  Built-in/custom presets                 Tested    8 comprehensive built-in presets in BUILTIN_PRESETS; PresetManager supports Save, Duplicate, and Delete
+  Preset import/export/validation         Tested    JSON export and secure JSON import with ALLOWED_KEYS sanitization rejecting unauthorized shell/command injections
+  Safe media-processing pipeline          Tested    Atomic temp output replacement, FFmpeg verify_output_file(), safe error recovery keeping original media intact
+  Phase 3 tests/regression                Tested    53 automated unit, GUI & integration tests passing in 4.87s
 
 ## Phase 4 --- System and advanced
 
@@ -129,7 +130,7 @@ based on this template or previous claims.
 
   Date         Command           Environment              Result    Logs/artifacts
   ------------ ----------------- ------------------------ --------- ----------------
-  2026-11-24   pytest tests -v   Win 11 / Python 3.14.7   PASSED    44 passed in 2.81s
+  2026-11-24   pytest tests -v   Win 11 / Python 3.14.7   PASSED    53 passed in 4.87s
 
 ## Decision log
 
@@ -140,5 +141,6 @@ based on this template or previous claims.
   2026-11-24   Add HistoryDialog with file check     Better UX: easily open/locate media       Direct integration with Explorer
   2026-11-24   Add 5-Tab Segmented Navigation        Dedicated views for Queue, Batch, Files   Scalable, intuitive desktop UX
   2026-11-24   Apply SQLite Migration v2             Priority, speed, ETA, platform tracking   Enhanced queue & history schema
+  2026-11-24   Implement Media Tools & Presets       Advanced audio, subtitles, SponsorBlock   Full Phase 3 media utility layer
 
-**Current release status:** Fully Verified (v2.7.0 Phase 2 ready).
+**Current release status:** Fully Verified (v2.8.0 Phase 3 ready).
