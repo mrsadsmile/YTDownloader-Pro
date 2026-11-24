@@ -444,7 +444,7 @@ def generate_diagnostic_report() -> str:
     lines = [
         "=== YTDownloader Pro Diagnostic Report ===",
         f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Application Version: 2.8.0 (Pro Desktop)",
+        f"Application Version: 2.9.0 (Pro Desktop)",
         f"Operating System: {sys.platform} ({os.name})",
         f"Python Version: {sys.version.split()[0]} ({'64-bit' if sys.maxsize > 2**32 else '32-bit'})",
         f"PySide6 Framework Version: {getattr(sys.modules.get('PySide6'), '__version__', '6.12.0')}",
@@ -484,6 +484,17 @@ DEFAULT_CONFIG = {
     "subtitle_format": "srt",
     "sub_only": False,
     "clipboard_monitor": False,
+    "clipboard_consent": True,
+    "auto_suggest_preset": True,
+    "socket_timeout": 15,
+    "network_retries": 5,
+    "retry_delay": 2,
+    "fragment_retries": 5,
+    "concurrent_fragments": 1,
+    "rate_limit": "Unlimited",
+    "ip_protocol": "Auto",
+    "custom_user_agent": "",
+    "browser_cookies": "None",
     "filename_template": "%(title)s.%(ext)s"
 }
 
@@ -541,6 +552,12 @@ class InspectWorker(QThread):
     def run(self):
         self.sig_started.emit()
         cleaned = clean_url(self.url)
+        try:
+            import network_system
+            network_system.LogManager.log("INFO", f"Analyzing metadata for URL: {cleaned}")
+        except Exception:
+            pass
+
         opts = {
             "quiet": True,
             "skip_download": True,
@@ -809,6 +826,14 @@ class DownloadWorker(QThread):
             ydl_opts["cookiefile"] = cookie_file
             self.sig_log.emit(f"[AUTH] Using cookie file: {os.path.basename(cookie_file)}")
 
+        # Phase 4: Network & System Configuration (Rate Limit, Retries, Concurrency, User Agent, Browser Cookies)
+        try:
+            import network_system
+            network_system.NetworkConfig.apply_network_options(ydl_opts, self.params)
+            network_system.LogManager.log("INFO", f"Job prepared for download: {url}")
+        except Exception as ex:
+            self.sig_log.emit(f"[NETWORK CONFIG NOTE] {ex}")
+
         # Configure Format Profiles
         is_dual = (download_type == "Dual Mode")
 
@@ -951,6 +976,11 @@ class DownloadWorker(QThread):
                     return
 
                 self.sig_status.emit("Completed")
+                try:
+                    import network_system
+                    network_system.LogManager.log("INFO", f"Download succeeded: {candidate_file}")
+                except Exception:
+                    pass
                 self.sig_finished.emit({
                     "video_file": candidate_file,
                     "audio_file": extracted_audio_file,
@@ -965,3 +995,8 @@ class DownloadWorker(QThread):
             self.sig_status.emit("Failed")
             self.sig_error.emit(app_err.user_message)
             self.sig_log.emit(f"[CRITICAL ERROR - {app_err.code}] {app_err.technical_message}")
+            try:
+                import network_system
+                network_system.LogManager.log("ERROR", f"Download failed ({app_err.code}): {app_err.technical_message}")
+            except Exception:
+                pass

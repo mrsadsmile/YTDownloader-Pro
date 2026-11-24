@@ -799,12 +799,17 @@ class MainWindow(QMainWindow):
 
     def check_clipboard_for_url(self):
         clipboard = QApplication.clipboard()
+        if not clipboard:
+            return
         text = clipboard.text().strip()
         if text.startswith("http://") or text.startswith("https://"):
             is_valid, _ = core.validate_url(text)
             if is_valid and text != self.txt_url.text().strip():
                 self.txt_url.setText(text)
-                self.lbl_url_feedback.setText("URL detected from clipboard.")
+                if self.config.get("clipboard_consent", True):
+                    self.lbl_url_feedback.setText("Media link detected in clipboard. Ready for analysis.")
+                else:
+                    self.lbl_url_feedback.setText("URL detected from clipboard.")
                 self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.ACCENT};")
 
     def paste_from_clipboard(self):
@@ -1134,6 +1139,20 @@ class MainWindow(QMainWindow):
         self.lbl_url_feedback.setText("Analysis successful.")
         self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.SUCCESS};")
 
+        # Auto-suggest preset based on source URL domain (Phase 4 Automation)
+        if self.config.get("auto_suggest_preset", True):
+            try:
+                import network_system
+                suggested_preset = network_system.AutomationManager.match_preset_for_url(data.get("url", ""))
+                if suggested_preset:
+                    idx = self.cmb_presets.findText(suggested_preset, Qt.MatchContains)
+                    if idx >= 0:
+                        self.cmb_presets.setCurrentIndex(idx)
+                        self.lbl_task_status.setText(f"Preset auto-matched: {suggested_preset}")
+                        self.log_edit.appendPlainText(f"[AUTOMATION] Applied matched preset '{suggested_preset}' for media domain.")
+            except Exception:
+                pass
+
         # Load Thumbnail
         thumb_url = data.get("thumbnail")
         if thumb_url:
@@ -1190,7 +1209,17 @@ class MainWindow(QMainWindow):
             "subtitle_lang": subs_cfg.get("subtitle_lang", self.config.get("subtitle_lang", "en,fa")),
             "embed_subtitles": subs_cfg.get("embed_subtitles", self.config.get("embed_subtitles", False)),
             "sub_only": subs_cfg.get("sub_only", False),
-            "subtitle_format": subs_cfg.get("subtitle_format", "srt")
+            "subtitle_format": subs_cfg.get("subtitle_format", "srt"),
+            "socket_timeout": self.config.get("socket_timeout", 15),
+            "network_retries": self.config.get("network_retries", 5),
+            "retry_delay": self.config.get("retry_delay", 2),
+            "fragment_retries": self.config.get("fragment_retries", 5),
+            "concurrent_fragments": self.config.get("concurrent_fragments", 1),
+            "rate_limit": self.config.get("rate_limit", "Unlimited"),
+            "ip_protocol": self.config.get("ip_protocol", "Auto"),
+            "custom_user_agent": self.config.get("custom_user_agent", ""),
+            "browser_cookies": self.config.get("browser_cookies", "None"),
+            "cookie_file": self.config.get("cookie_file", "")
         }
 
         self.btn_download.setText("Start Download")

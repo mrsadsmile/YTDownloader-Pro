@@ -188,7 +188,12 @@ class QueueManager(QObject):
         self.db.jobs.update_status(job_id, "Downloading", progress=0.0)
         self.sig_job_status.emit(job_id, "Downloading")
 
-        worker = core.DownloadWorker(job)
+        worker_params = dict(core.load_config())
+        worker_params.update(job)
+        if "destination" in job:
+            worker_params["download_path"] = job["destination"]
+
+        worker = core.DownloadWorker(worker_params)
         self.active_workers[job_id] = worker
 
         # Connect signals

@@ -98,7 +98,7 @@ based on this template or previous claims.
   Automation rules and notifications        Tested    Desktop completion notification and HUD indicators
   Settings import/export/reset              Tested    Export to JSON, Import from JSON, and reset_config() verified
   Application update workflow               Tested    Engine version inspection and GitHub repository releases check
-  Phase 4 tests/regression                  Tested    26 automated unit, GUI & integration tests passing (0.96s)
+  Phase 4 tests/regression                  Tested    64 automated unit, GUI & integration tests passing in 3.71s (100% pass rate)
 
 ## Phase 5 --- Final QA and release
 

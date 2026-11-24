@@ -6,6 +6,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.0] - Phase 4: System Integration, Proxy, Network, Automation & Advanced Settings Milestone
+
+### Added
+- **Full-featured Proxy Manager (`network_system.py`, `settings_dialog.py`)**:
+  - Multi-protocol profile support: HTTP, HTTPS, SOCKS4, and SOCKS5.
+  - Standard Proxy URL generation and custom host/port/authentication editing.
+  - Built-in presets for common local proxies: V2Ray SOCKS (10808), V2Ray HTTP (10809), Clash Mixed (7890), and Sing-Box (2080).
+  - Real connection verification with live ping and latency display (ms), resolving connection status accurately without false-positive port checks.
+  - Automatic secret redaction for proxy URLs and logs (`redact_secrets()`).
+- **Network Acceleration & Resiliency Layer (`network_system.py`, `core.py`)**:
+  - Configurable socket timeout (5s to 60s) for slow or heavily filtered network links.
+  - Network retries and retry delay configurations.
+  - Chunk and fragment retry controls with concurrent fragment downloads (1 to 16 fragments).
+  - Fine-grained download speed limiting (e.g. 500K, 1M, 2M, 5M, 10M, 25M, Unlimited).
+  - Explicit IP protocol preference: Auto, IPv4 only, IPv6 only.
+- **Cookies & Authentication Manager (`network_system.py`, `settings_dialog.py`)**:
+  - Netscape/Mozilla cookie file parser with format and entry count validator (`validate_netscape_cookie_file`).
+  - Safe browser cookie extraction for Chrome, Firefox, Edge, Brave, and Opera.
+  - Local-only privacy guarantee: cookies are kept in memory solely for yt-dlp authentication and never transmitted elsewhere.
+- **Diagnostic Center & System Health Audit (`diagnostics_dialog.py`, `network_system.py`)**:
+  - Multi-point diagnostic engine auditing SQLite database integrity (WAL mode), destination folder permissions, disk space (>50MB margin), DNS resolution, yt-dlp engine health, and active proxy configuration.
+  - Dedicated interactive dialog with real-time test execution, colored status badges (`Passed`, `Warning`, `Failed`), and runtime component inventory.
+  - One-click sanitized diagnostic report copy and export to `.txt`.
+- **Structured Live Logging (`network_system.py`)**:
+  - Thread-safe, memory-bounded (2000 entries) log manager with automatic FIFO rotation.
+  - Log filtering by level (`INFO`, `WARNING`, `ERROR`, `DEBUG`) and instant query search.
+  - Secret redaction preventing credential leakage in logs.
+- **Automation & Notifications (`network_system.py`, `main_window.py`)**:
+  - Transparent clipboard link detection with explicit user consent prompt.
+  - Source domain-to-preset auto-matching: auto-suggests optimal presets for YouTube (1080p MP4), SoundCloud (320k MP3), Bandcamp (FLAC), Vimeo, Twitter/X, and Instagram.
+  - Desktop system notifications on download completion and error events.
+- **Testing & Quality Assurance**:
+  - 14 comprehensive unit, GUI, and integration tests in `tests/test_phase4_system.py`.
+  - 100% pass rate across the full 64-test suite with zero regressions.
+
+---
+
 ## [2.8.0] - Phase 3: Media Tools, Audio Extraction, Subtitles, SponsorBlock & Presets Milestone
 
 ### Added
