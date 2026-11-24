@@ -80,6 +80,15 @@ class MainWindow(QMainWindow):
         self.init_ui()
         self.check_clipboard_for_url()
 
+        # Connect clipboard monitoring if active
+        clip = QApplication.clipboard()
+        if clip:
+            clip.dataChanged.connect(self.on_clipboard_data_changed)
+
+    def on_clipboard_data_changed(self):
+        if self.config.get("clipboard_monitor", False):
+            self.check_clipboard_for_url()
+
     def init_ui(self):
         central_widget = QWidget(self)
         central_widget.setObjectName("centralWidget")
@@ -254,31 +263,58 @@ class MainWindow(QMainWindow):
 
         # Details
         info_layout = QVBoxLayout()
-        info_layout.setSpacing(6)
+        info_layout.setSpacing(5)
 
         self.lbl_prev_title = QLabel("Media Title")
         self.lbl_prev_title.setStyleSheet(f"font-size: 14px; font-weight: 600; color: {Tokens.TEXT_PRIMARY};")
         self.lbl_prev_title.setWordWrap(True)
         info_layout.addWidget(self.lbl_prev_title)
 
-        meta_row = QHBoxLayout()
-        meta_row.setSpacing(16)
+        # Meta Row 1: Platform, Creator, Duration, Upload Date
+        meta_row_1 = QHBoxLayout()
+        meta_row_1.setSpacing(14)
 
-        self.lbl_prev_channel = QLabel("Channel: --")
+        self.lbl_prev_platform = QLabel("Platform: --")
+        self.lbl_prev_platform.setProperty("secondary", True)
+        meta_row_1.addWidget(self.lbl_prev_platform)
+
+        self.lbl_prev_channel = QLabel("Creator: --")
         self.lbl_prev_channel.setProperty("secondary", True)
-        meta_row.addWidget(self.lbl_prev_channel)
+        meta_row_1.addWidget(self.lbl_prev_channel)
 
         self.lbl_prev_duration = QLabel("Duration: --:--")
         self.lbl_prev_duration.setProperty("secondary", True)
-        meta_row.addWidget(self.lbl_prev_duration)
+        meta_row_1.addWidget(self.lbl_prev_duration)
 
-        meta_row.addStretch()
-        info_layout.addLayout(meta_row)
+        self.lbl_prev_date = QLabel("Uploaded: --")
+        self.lbl_prev_date.setProperty("secondary", True)
+        meta_row_1.addWidget(self.lbl_prev_date)
 
-        # Available Qualities tags
-        self.lbl_prev_res = QLabel("Detected Qualities: Auto")
+        meta_row_1.addStretch()
+        info_layout.addLayout(meta_row_1)
+
+        # Meta Row 2: Resolutions, Codecs/FPS, Subtitles, Est Size
+        meta_row_2 = QHBoxLayout()
+        meta_row_2.setSpacing(14)
+
+        self.lbl_prev_res = QLabel("Resolutions: Auto")
         self.lbl_prev_res.setProperty("muted", True)
-        info_layout.addWidget(self.lbl_prev_res)
+        meta_row_2.addWidget(self.lbl_prev_res)
+
+        self.lbl_prev_codecs = QLabel("Codecs: Auto")
+        self.lbl_prev_codecs.setProperty("muted", True)
+        meta_row_2.addWidget(self.lbl_prev_codecs)
+
+        self.lbl_prev_subs = QLabel("Subtitles: None")
+        self.lbl_prev_subs.setProperty("muted", True)
+        meta_row_2.addWidget(self.lbl_prev_subs)
+
+        self.lbl_prev_size = QLabel("Est. Size: --")
+        self.lbl_prev_size.setProperty("muted", True)
+        meta_row_2.addWidget(self.lbl_prev_size)
+
+        meta_row_2.addStretch()
+        info_layout.addLayout(meta_row_2)
 
         p_layout.addLayout(info_layout)
         parent_layout.addWidget(self.preview_card)
@@ -356,7 +392,8 @@ class MainWindow(QMainWindow):
         self.lbl_a_format = QLabel("Audio Format:")
         self.lbl_a_format.setProperty("secondary", True)
         self.cmb_audio_format = QComboBox()
-        self.cmb_audio_format.addItems(["MP3", "M4A", "OPUS", "WAV", "FLAC"])
+        self.cmb_audio_format.addItems(["Best Available (Original)", "MP3", "M4A", "OPUS", "WAV", "FLAC"])
+        self.cmb_audio_format.currentTextChanged.connect(self.on_audio_format_changed)
         self.col_audio_format.addWidget(self.lbl_a_format)
         self.col_audio_format.addWidget(self.cmb_audio_format)
         grid_layout.addLayout(self.col_audio_format)
@@ -499,6 +536,14 @@ class MainWindow(QMainWindow):
         self.btn_download.clicked.connect(self.start_download)
         actions_row.addWidget(self.btn_download, 3)
 
+        self.btn_open_file = QPushButton("Open File")
+        self.btn_open_file.setIcon(get_icon("play", Tokens.TEXT_PRIMARY, 16))
+        self.btn_open_file.setFixedHeight(40)
+        self.btn_open_file.setEnabled(False)
+        self.btn_open_file.setToolTip("Open downloaded media file in default system player")
+        self.btn_open_file.clicked.connect(self.open_downloaded_file)
+        actions_row.addWidget(self.btn_open_file, 1)
+
         self.btn_cancel = QPushButton("Cancel")
         self.btn_cancel.setIcon(get_icon("x_circle", Tokens.DANGER, 16))
         self.btn_cancel.setProperty("danger", True)
@@ -586,9 +631,11 @@ class MainWindow(QMainWindow):
         clipboard = QApplication.clipboard()
         text = clipboard.text().strip()
         if text.startswith("http://") or text.startswith("https://"):
-            if "youtube.com" in text or "youtu.be" in text:
+            is_valid, _ = core.validate_url(text)
+            if is_valid and text != self.txt_url.text().strip():
                 self.txt_url.setText(text)
                 self.lbl_url_feedback.setText("URL detected from clipboard.")
+                self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.ACCENT};")
 
     def paste_from_clipboard(self):
         clipboard = QApplication.clipboard()
@@ -606,6 +653,8 @@ class MainWindow(QMainWindow):
         self.lbl_url_feedback.setText("")
         self.btn_analyze.setEnabled(True)
         self.btn_analyze.setText("Analyze")
+        self.btn_analyze.setIcon(get_icon("search", "#FFFFFF", 16))
+        self.btn_open_file.setEnabled(False)
         self.reset_hud()
 
     def on_url_text_changed(self, text: str):
@@ -621,6 +670,26 @@ class MainWindow(QMainWindow):
             else:
                 self.lbl_url_feedback.setText(reason)
                 self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.WARNING};")
+
+    def on_audio_format_changed(self, fmt: str):
+        is_lossless_or_source = (fmt in ["Best Available (Original)", "WAV", "FLAC"])
+        self.cmb_audio_quality.setEnabled(not is_lossless_or_source)
+        if is_lossless_or_source:
+            self.lbl_a_quality.setText("Audio Bitrate: (Lossless / Source)")
+        else:
+            self.lbl_a_quality.setText("Audio Bitrate:")
+
+    def open_downloaded_file(self):
+        if not self.last_download_result:
+            return
+        target = self.last_download_result.get("video_file") or self.last_download_result.get("audio_file")
+        if target and os.path.exists(target):
+            try:
+                os.startfile(target)
+            except Exception as e:
+                QMessageBox.warning(self, "Open File", f"Could not launch media player: {e}")
+        else:
+            QMessageBox.information(self, "Open File", "Media file not found on disk.")
 
     def browse_folder(self):
         path = QFileDialog.getExistingDirectory(self, "Select Download Directory", self.txt_path.text())
@@ -665,6 +734,15 @@ class MainWindow(QMainWindow):
 
     # --- ANALYSIS FLOW ---
     def on_analyze_clicked(self):
+        if self.inspect_worker and self.inspect_worker.isRunning():
+            self.inspect_worker.cancel()
+            self.btn_analyze.setText("Analyze")
+            self.btn_analyze.setIcon(get_icon("search", "#FFFFFF", 16))
+            self.lbl_task_status.setText("Analysis cancelled.")
+            self.lbl_url_feedback.setText("Metadata analysis cancelled by operator.")
+            self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.TEXT_MUTED};")
+            return
+
         url = self.txt_url.text().strip()
         is_valid, reason = core.validate_url(url)
         if not is_valid:
@@ -672,8 +750,8 @@ class MainWindow(QMainWindow):
             self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.ERROR};")
             return
 
-        self.btn_analyze.setEnabled(False)
-        self.btn_analyze.setText("Analyzing...")
+        self.btn_analyze.setText("Cancel Analysis")
+        self.btn_analyze.setIcon(get_icon("x_circle", "#FFFFFF", 16))
         self.lbl_task_status.setText("Analyzing media metadata...")
         self.lbl_url_feedback.setText("Fetching metadata from source...")
         self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.TEXT_MUTED};")
@@ -686,8 +764,8 @@ class MainWindow(QMainWindow):
         self.inspect_worker.start()
 
     def on_inspect_completed(self, data: Dict[str, Any]):
-        self.btn_analyze.setEnabled(True)
         self.btn_analyze.setText("Analyze")
+        self.btn_analyze.setIcon(get_icon("search", "#FFFFFF", 16))
         self.active_media_info = data
 
         # Populate Preview Card
@@ -697,9 +775,31 @@ class MainWindow(QMainWindow):
         else:
             self.lbl_prev_channel.setText(f"Creator: {data.get('uploader')}")
         self.lbl_prev_duration.setText(f"Duration: {data.get('duration')}")
+        self.lbl_prev_platform.setText(f"Platform: {data.get('platform', 'Web')}")
+        self.lbl_prev_date.setText(f"Uploaded: {data.get('upload_date', '--')}")
 
         res_list = data.get("resolutions", [])
-        self.lbl_prev_res.setText(f"Available Resolutions: {', '.join(res_list)}")
+        self.lbl_prev_res.setText(f"Resolutions: {', '.join(res_list[:5])}")
+
+        # Codecs & FPS
+        v_c = "/".join(data.get("vcodecs", ["Auto"]))
+        a_c = "/".join(data.get("acodecs", ["Auto"]))
+        fps_info = f" • {data['fps']}fps" if data.get("fps") else ""
+        self.lbl_prev_codecs.setText(f"Codecs: {v_c} / {a_c}{fps_info}")
+
+        # Subtitles
+        subs = data.get("subtitles", [])
+        self.lbl_prev_subs.setText(f"Subtitles: {', '.join(subs) if subs else 'None'}")
+
+        # File size estimation
+        est_bytes = data.get("estimated_size", 0)
+        if est_bytes and est_bytes > 0:
+            if est_bytes > 1024 * 1024 * 1024:
+                self.lbl_prev_size.setText(f"Est. Size: {est_bytes / (1024*1024*1024):.2f} GB")
+            else:
+                self.lbl_prev_size.setText(f"Est. Size: {est_bytes / (1024*1024):.1f} MB")
+        else:
+            self.lbl_prev_size.setText("Est. Size: Dynamic")
 
         # Update Quality ComboBox
         self.cmb_video_quality.clear()
@@ -708,6 +808,7 @@ class MainWindow(QMainWindow):
         self.preview_card.setVisible(True)
         self.lbl_task_status.setText("Media verified. Ready to download.")
         self.lbl_url_feedback.setText("Analysis successful.")
+        self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.SUCCESS};")
 
         # Load Thumbnail
         thumb_url = data.get("thumbnail")
@@ -717,10 +818,11 @@ class MainWindow(QMainWindow):
             self.thumb_worker.start()
 
     def on_inspect_failed(self, error: str):
-        self.btn_analyze.setEnabled(True)
         self.btn_analyze.setText("Analyze")
+        self.btn_analyze.setIcon(get_icon("search", "#FFFFFF", 16))
         self.lbl_task_status.setText("Analysis failed.")
         self.lbl_url_feedback.setText(f"Error: {error[:90]}")
+        self.lbl_url_feedback.setStyleSheet(f"color: {Tokens.ERROR};")
         self.log_edit.appendPlainText(f"[ANALYSIS ERROR] {error}")
 
     # --- DOWNLOAD FLOW ---
@@ -756,7 +858,10 @@ class MainWindow(QMainWindow):
             "sponsorblock_enabled": self.chk_adv_sponsor.isChecked(),
         }
 
+        self.btn_download.setText("Start Download")
+        self.btn_download.setIcon(get_icon("download", "#FFFFFF", 16))
         self.btn_download.setEnabled(False)
+        self.btn_open_file.setEnabled(False)
         self.btn_cancel.setEnabled(True)
         self.btn_analyze.setEnabled(False)
         self.reset_hud()
@@ -792,7 +897,10 @@ class MainWindow(QMainWindow):
             self.lbl_size.setText(f"Size: {downloaded:.1f} MB")
 
     def on_download_finished(self, result: Dict[str, Any]):
+        self.btn_download.setText("Start Download")
+        self.btn_download.setIcon(get_icon("download", "#FFFFFF", 16))
         self.btn_download.setEnabled(True)
+        self.btn_open_file.setEnabled(True)
         self.btn_cancel.setEnabled(False)
         self.btn_analyze.setEnabled(True)
         self.progress_bar.setValue(1000)
@@ -834,7 +942,10 @@ class MainWindow(QMainWindow):
         )
 
     def on_download_error(self, err_msg: str):
+        self.btn_download.setText("Retry Download")
+        self.btn_download.setIcon(get_icon("refresh_cw", "#FFFFFF", 16))
         self.btn_download.setEnabled(True)
+        self.btn_open_file.setEnabled(False)
         self.btn_cancel.setEnabled(False)
         self.btn_analyze.setEnabled(True)
         self.lbl_task_status.setText("Failed")

@@ -208,13 +208,75 @@ def verify_output_file(path: str | Path) -> bool:
         return False
 
 
+def validate_destination(path: str | Path, required_bytes: int = 0) -> Tuple[bool, str]:
+    """
+    Validates that the destination directory exists (or can be created),
+    is writable, and has sufficient disk space (at least 50MB or required_bytes).
+    """
+    if not path:
+        return False, "Destination path cannot be empty."
+    p = Path(path)
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        return False, f"Cannot create download directory: {e}"
+
+    if not p.is_dir():
+        return False, "Destination path is not a valid directory."
+
+    # Test write permissions with a temporary probe
+    test_file = p / f".write_probe_{int(time.time()*1000)}"
+    try:
+        with open(test_file, "w", encoding="utf-8") as f:
+            f.write("probe")
+        test_file.unlink(missing_ok=True)
+    except Exception as e:
+        return False, f"Write permission denied for destination: {e}"
+
+    # Check disk space
+    try:
+        usage = shutil.disk_usage(str(p))
+        min_required = max(required_bytes, 50 * 1024 * 1024)  # 50 MB safety margin
+        if usage.free < min_required:
+            free_mb = usage.free / (1024 * 1024)
+            return False, f"Insufficient disk space. Only {free_mb:.1f} MB free on disk."
+    except Exception:
+        pass
+
+    return True, "Destination is valid and writable."
+
+
 def classify_error(exception: Any) -> AppError:
     """Classifies raw error messages into structured AppError with user message and retry flag."""
     raw = str(exception)
     clean_raw = re.sub(r"ERROR:\s*", "", raw).strip()
     low = clean_raw.lower()
 
-    if any(k in low for k in ["network", "timed out", "connection", "urlopen error", "name or service not known", "getaddrinfo"]):
+    if any(k in low for k in ["drm", "encrypted", "protected content"]):
+        return AppError(
+            code="ERR_DRM",
+            user_message="This media is protected by Digital Rights Management (DRM) and cannot be downloaded.",
+            technical_message=clean_raw,
+            component="extractor",
+            retryable=False
+        )
+    elif any(k in low for k in ["removed", "deleted", "no longer available", "video unavailable", "copyright", "terminated"]):
+        return AppError(
+            code="ERR_DELETED",
+            user_message="This video is unavailable, deleted, or removed due to copyright restrictions.",
+            technical_message=clean_raw,
+            component="extractor",
+            retryable=False
+        )
+    elif any(k in low for k in ["unsupported url", "is not a valid url", "no suitable extractor"]):
+        return AppError(
+            code="ERR_UNSUPPORTED_URL",
+            user_message="This URL format is not supported or no suitable media extractor was found.",
+            technical_message=clean_raw,
+            component="extractor",
+            retryable=False
+        )
+    elif any(k in low for k in ["network", "timed out", "connection", "urlopen error", "name or service not known", "getaddrinfo"]):
         return AppError(
             code="ERR_NETWORK",
             user_message="Unable to connect to the source. Check your internet connection or proxy settings.",
@@ -225,7 +287,7 @@ def classify_error(exception: Any) -> AppError:
     elif any(k in low for k in ["proxy", "socks", "tunnel", "127.0.0.1"]):
         return AppError(
             code="ERR_PROXY",
-            user_message="Proxy connection failed. Verify your proxy configuration.",
+            user_message="Proxy connection failed. Verify your proxy configuration or check if your proxy client is running.",
             technical_message=clean_raw,
             component="proxy",
             retryable=True
@@ -233,7 +295,7 @@ def classify_error(exception: Any) -> AppError:
     elif any(k in low for k in ["private", "sign in", "members-only", "login", "restricted", "confirm your age"]):
         return AppError(
             code="ERR_RESTRICTED",
-            user_message="This media is private, age-restricted, or requires user login.",
+            user_message="This media is private, age-restricted, or requires user login credentials/cookies.",
             technical_message=clean_raw,
             component="extractor",
             retryable=False
@@ -241,18 +303,26 @@ def classify_error(exception: Any) -> AppError:
     elif any(k in low for k in ["ffmpeg", "ffprobe", "merge", "postprocessor"]):
         return AppError(
             code="ERR_FFMPEG",
-            user_message="FFmpeg media processing error. Check FFmpeg installation.",
+            user_message="FFmpeg media processing error. Verify FFmpeg installation and codecs.",
             technical_message=clean_raw,
             component="ffmpeg",
             retryable=True
         )
-    elif any(k in low for k in ["space", "disk", "permission", "access is denied", "winerror 448", "winerror"]):
+    elif any(k in low for k in ["space", "disk full", "not enough space"]):
         return AppError(
             code="ERR_DISK_SPACE",
-            user_message="Unable to save the file. Check your download directory permissions and storage.",
+            user_message="Insufficient disk space to save the media file.",
             technical_message=clean_raw,
             component="filesystem",
             retryable=True
+        )
+    elif any(k in low for k in ["permission", "access is denied", "winerror 5", "winerror 13", "winerror 448"]):
+        return AppError(
+            code="ERR_PERMISSION",
+            user_message="Permission denied while writing to the destination folder.",
+            technical_message=clean_raw,
+            component="filesystem",
+            retryable=False
         )
     elif any(k in low for k in ["canceled", "cancelled", "abort"]):
         return AppError(
@@ -265,7 +335,7 @@ def classify_error(exception: Any) -> AppError:
     else:
         return AppError(
             code="ERR_UNKNOWN",
-            user_message="Operation failed. You can retry or view technical details.",
+            user_message="Operation failed. You can retry or inspect technical details.",
             technical_message=clean_raw,
             component="core",
             retryable=True
@@ -407,7 +477,9 @@ DEFAULT_CONFIG = {
     "download_thumbnail": False,
     "download_subtitles": False,
     "subtitle_lang": "en,fa",
-    "embed_subtitles": False
+    "embed_subtitles": False,
+    "clipboard_monitor": False,
+    "filename_template": "%(title)s.%(ext)s"
 }
 
 
@@ -459,6 +531,7 @@ class InspectWorker(QThread):
 
     def cancel(self):
         self.cancel_requested = True
+        self.requestInterruption()
 
     def run(self):
         self.sig_started.emit()
@@ -480,7 +553,7 @@ class InspectWorker(QThread):
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(cleaned, download=False)
-                if self.cancel_requested:
+                if self.cancel_requested or self.isInterruptionRequested():
                     return
 
                 if not info:
@@ -503,16 +576,53 @@ class InspectWorker(QThread):
                     thumbnail = info.get("thumbnail")
                     duration_sec = info.get("duration", 0)
 
-                # Parse available video resolutions
+                # Platform & Upload Date
+                platform = info.get("extractor_key") or info.get("extractor") or "Web"
+                upload_date_raw = info.get("upload_date")
+                upload_date = "--"
+                if upload_date_raw and len(str(upload_date_raw)) == 8:
+                    s = str(upload_date_raw)
+                    upload_date = f"{s[:4]}-{s[4:6]}-{s[6:]}"
+                elif upload_date_raw:
+                    upload_date = str(upload_date_raw)
+
+                # Parse available video resolutions, codecs, fps, and formats
                 formats = info.get("formats", [])
                 resolutions = set()
                 has_audio = False
+                vcodecs = set()
+                acodecs = set()
+                max_fps = 0
+                audio_formats = []
+                total_filesize = info.get("filesize") or info.get("filesize_approx") or 0
+
                 for f in formats:
                     h = f.get("height")
                     if h and isinstance(h, int) and h > 0:
                         resolutions.add(h)
-                    if f.get("acodec") and f.get("acodec") != "none":
+                    
+                    fps = f.get("fps")
+                    if fps and isinstance(fps, (int, float)) and fps > max_fps:
+                        max_fps = int(fps)
+
+                    vc = f.get("vcodec")
+                    if vc and vc != "none":
+                        vcodecs.add(vc.split(".")[0])
+
+                    ac = f.get("acodec")
+                    if ac and ac != "none":
                         has_audio = True
+                        acodecs.add(ac.split(".")[0])
+
+                    if (not vc or vc == "none") and ac and ac != "none":
+                        ext = f.get("ext")
+                        if ext and ext not in audio_formats:
+                            audio_formats.append(ext)
+
+                    if not total_filesize:
+                        fs = f.get("filesize") or f.get("filesize_approx")
+                        if fs and isinstance(fs, (int, float)) and fs > total_filesize:
+                            total_filesize = fs
 
                 sorted_res = sorted(list(resolutions), reverse=True)
                 res_labels = []
@@ -538,14 +648,24 @@ class InspectWorker(QThread):
                 else:
                     clean_res.insert(0, "Best Available")
 
-                mins, secs = divmod(duration_sec, 60)
-                hrs, mins = divmod(mins, 60)
-                dur_str = f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
+                if info.get("is_live"):
+                    dur_str = "Live Stream"
+                elif duration_sec > 0:
+                    mins, secs = divmod(duration_sec, 60)
+                    hrs, mins = divmod(mins, 60)
+                    dur_str = f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs > 0 else f"{mins:02d}:{secs:02d}"
+                else:
+                    dur_str = "--:--"
+
+                # Subtitles
+                subs = info.get("subtitles") or {}
+                auto_subs = info.get("automatic_captions") or {}
+                all_subs = sorted(list(set(list(subs.keys()) + list(auto_subs.keys()))))
 
                 payload = {
                     "url": cleaned,
-                    "title": title,
-                    "uploader": uploader,
+                    "title": title or "Untitled Media",
+                    "uploader": uploader or "Unknown Creator",
                     "duration": dur_str,
                     "duration_sec": duration_sec,
                     "thumbnail": thumbnail,
@@ -554,13 +674,21 @@ class InspectWorker(QThread):
                     "ext": info.get("ext", "mp4"),
                     "is_live": info.get("is_live", False),
                     "is_playlist": is_playlist,
-                    "playlist_count": playlist_count
+                    "playlist_count": playlist_count,
+                    "platform": platform,
+                    "upload_date": upload_date,
+                    "fps": max_fps if max_fps > 0 else None,
+                    "vcodecs": sorted(list(vcodecs)) if vcodecs else ["Auto"],
+                    "acodecs": sorted(list(acodecs)) if acodecs else ["Auto"],
+                    "audio_formats": audio_formats if audio_formats else ["mp3", "m4a"],
+                    "subtitles": all_subs[:6],
+                    "estimated_size": total_filesize
                 }
-                if not self.cancel_requested:
+                if not (self.cancel_requested or self.isInterruptionRequested()):
                     self.sig_completed.emit(payload)
 
         except Exception as e:
-            if not self.cancel_requested:
+            if not (self.cancel_requested or self.isInterruptionRequested()):
                 err_obj = classify_error(e)
                 self.sig_failed.emit(err_obj.user_message)
 
@@ -580,6 +708,7 @@ class DownloadWorker(QThread):
 
     def cancel(self):
         self.cancel_requested = True
+        self.requestInterruption()
         self.sig_status.emit("Cancelling...")
         self.sig_log.emit("[ABORT] Cancellation signaled by operator.")
 
@@ -593,11 +722,20 @@ class DownloadWorker(QThread):
         a_quality = self.params.get("audio_quality", "320 kbps")
         proxy = self.params.get("proxy_url") if self.params.get("proxy_enabled") else None
 
+        # Validate destination directory and write permissions / disk space
+        is_dest_valid, dest_err = validate_destination(save_path)
+        if not is_dest_valid:
+            self.sig_status.emit("Failed")
+            self.sig_error.emit(dest_err)
+            self.sig_log.emit(f"[DESTINATION ERROR] {dest_err}")
+            return
+
         self.sig_status.emit("Preparing...")
         self.sig_log.emit(f"[START] Beginning download for: {url}")
         self.sig_log.emit(f"[DESTINATION] {save_path}")
 
-        outtmpl = os.path.join(save_path, "%(title)s.%(ext)s")
+        tmpl = self.params.get("filename_template") or "%(title)s.%(ext)s"
+        outtmpl = os.path.join(save_path, tmpl)
 
         def hook(d):
             if self.cancel_requested:
@@ -658,19 +796,22 @@ class DownloadWorker(QThread):
         if download_type == "Audio":
             # Extract Audio only
             ydl_opts["format"] = "bestaudio/best"
-            bitrate = "320"
-            if "256" in a_quality:
-                bitrate = "256"
-            elif "192" in a_quality:
-                bitrate = "192"
-            elif "128" in a_quality:
-                bitrate = "128"
+            if a_format in ["best available (original)", "original", "best"]:
+                self.sig_log.emit("[AUDIO] Preserving original source audio bitstream without re-encoding.")
+            else:
+                bitrate = "320"
+                if "256" in a_quality:
+                    bitrate = "256"
+                elif "192" in a_quality:
+                    bitrate = "192"
+                elif "128" in a_quality:
+                    bitrate = "128"
 
-            ydl_opts["postprocessors"] = [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": a_format,
-                "preferredquality": bitrate,
-            }]
+                ydl_opts["postprocessors"] = [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": a_format,
+                    "preferredquality": bitrate,
+                }]
         else:
             # Video or Dual Mode
             h_filter = ""

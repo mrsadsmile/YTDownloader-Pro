@@ -103,6 +103,58 @@ class TestPhase1Core(unittest.TestCase):
         err_ff = core.classify_error(Exception("ffmpeg not found or failed to execute"))
         self.assertEqual(err_ff.code, "ERR_FFMPEG")
 
+        err_drm = core.classify_error(Exception("This video contains DRM encrypted content"))
+        self.assertEqual(err_drm.code, "ERR_DRM")
+        self.assertFalse(err_drm.retryable)
+
+        err_del = core.classify_error(Exception("Video unavailable: This video has been removed by user"))
+        self.assertEqual(err_del.code, "ERR_DELETED")
+        self.assertFalse(err_del.retryable)
+
+        err_perm = core.classify_error(Exception("[WinError 5] Access is denied"))
+        self.assertEqual(err_perm.code, "ERR_PERMISSION")
+
+        err_unsupported = core.classify_error(Exception("Unsupported URL: no suitable extractor found"))
+        self.assertEqual(err_unsupported.code, "ERR_UNSUPPORTED_URL")
+
+    def test_destination_validation(self):
+        """Test destination path existence, write permissions, and disk space checks."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Valid writable path
+            valid, msg = core.validate_destination(tmpdir)
+            self.assertTrue(valid, msg)
+
+            # Subdirectory creation
+            sub = os.path.join(tmpdir, "nested", "downloads")
+            valid, msg = core.validate_destination(sub)
+            self.assertTrue(valid, msg)
+            self.assertTrue(os.path.isdir(sub))
+
+            # Empty path
+            valid, msg = core.validate_destination("")
+            self.assertFalse(valid)
+
+    def test_inspect_worker_cancellation(self):
+        """Test cancellation state flag in InspectWorker."""
+        worker = core.InspectWorker("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        self.assertFalse(worker.cancel_requested)
+        worker.cancel()
+        self.assertTrue(worker.cancel_requested)
+
+    def test_audio_preservation_options(self):
+        """Test audio codec detection and bitrate handling for lossless and compressed formats."""
+        codec_mp3, uses_bitrate_mp3 = core.get_audio_codec_info("mp3")
+        self.assertEqual(codec_mp3, "libmp3lame")
+        self.assertTrue(uses_bitrate_mp3)
+
+        codec_flac, uses_bitrate_flac = core.get_audio_codec_info("flac")
+        self.assertEqual(codec_flac, "flac")
+        self.assertFalse(uses_bitrate_flac)
+
+        codec_wav, uses_bitrate_wav = core.get_audio_codec_info("wav")
+        self.assertEqual(codec_wav, "pcm_s16le")
+        self.assertFalse(uses_bitrate_wav)
+
 
 if __name__ == "__main__":
     unittest.main()

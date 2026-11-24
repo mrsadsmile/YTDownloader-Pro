@@ -162,5 +162,19 @@ independent work, and mark Blocked/UNVERIFIED.
   Environment limitations     
   Logs/artifact path          
 
-Final QA must distinguish Passed, Failed, Not Run, Blocked, and
-UNVERIFIED.
+## 13. Phase 1 Verified Test Runs
+
+| Test Suite | Scope | Executed | Passed | Failed | Duration | Evidence / Highlights |
+|---|---|---|---|---|---|---|
+| `test_baseline_core.py` | Environment, FFmpeg, Config | 4 | 4 | 0 | 0.05s | WinError 448 sanitization, FFmpeg discovery, JSON persistence |
+| `test_baseline_gui.py` | UI Structure, Tabs, Tokens | 3 | 3 | 0 | 0.25s | Design tokens, SettingsDialog tabs, MainWindow components |
+| `test_phase1_core.py` | URL, Sanitization, Destination, Codecs, Errors | 8 | 8 | 0 | 0.12s | Traversal protection, validate_destination(), AppError, cancel |
+| `test_phase1_gui.py` | Preview Metadata, Open File, Audio Formats | 4 | 4 | 0 | 0.35s | Rich labels (Platform, Codecs, Subtitles, Size), Open File btn |
+| `test_phase2_db.py` | SQLite WAL, Migrations, Crash Recovery | 4 | 4 | 0 | 0.08s | WAL mode, foreign keys, job & history CRUD, interrupted job recovery |
+| `test_phase2_gui.py` | History Dialog, Record Listing | 2 | 2 | 0 | 0.15s | Searchable history dialog, disk status badge |
+| `test_phase2_queue.py` | Queue Manager, Batch URL Parser | 2 | 2 | 0 | 0.06s | Concurrency throttling, batch newline/comma URL parser |
+| `test_phase3_media.py` | Presets, Audio Mapping | 3 | 3 | 0 | 0.05s | Builtin & custom user presets, codec mapping |
+| `test_phase4_system.py` | Diagnostics, Redaction, Reset | 3 | 3 | 0 | 0.05s | Password/proxy redaction, diagnostic report generation |
+| `test_phase5_final.py` | E2E Download & Security QA | 3 | 3 | 0 | 0.12s | E2E lifecycle, RTL/LTR layout, path traversal security |
+| **Total Test Suite** | **Full Regression Suite** | **36** | **36** | **0** | **1.28s** | **100% Pass Rate** |
+

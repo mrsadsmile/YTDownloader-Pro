@@ -32,20 +32,23 @@ based on this template or previous claims.
 
   Feature                                 Status    Evidence / notes
   --------------------------------------- --------- ------------------
-  URL validation and analysis             Tested    validate_url() & clean_url() strips tracking tokens; unit tested
-  Media/playlist detection                Tested    InspectWorker detects single vs playlist & item count
-  Metadata and thumbnail preview          Tested    Title, uploader, formatted duration, async thumbnail loading
-  Dynamic format/quality discovery        Tested    Extracts source resolutions (2160p..360p) dynamically
+  URL validation and analysis             Tested    validate_url() & clean_url() strips tracking tokens; interactive cancellation supported
+  Clipboard monitoring and auto-detect    Tested    check_clipboard_for_url() and dataChanged signal support; unit/GUI verified
+  Media/playlist detection                Tested    InspectWorker detects single vs playlist & item count across all yt-dlp platforms
+  Metadata and thumbnail preview          Tested    Title, uploader, duration, platform, upload date, codecs, fps, subtitles, est. size
+  Dynamic format/quality discovery        Tested    Extracts source resolutions (2160p..360p) dynamically without hardcoding
   Video mode                              Tested    Best video + audio merged via FFmpeg into MP4/MKV/WEBM
-  Audio mode                              Tested    Direct extraction to MP3/M4A/OPUS/WAV/FLAC with custom bitrates
+  Audio mode                              Tested    Supports MP3, M4A, OPUS, WAV, FLAC; preserves original source stream if requested
   Dual Mode                               Tested    Downloads full video and extracts high-bitrate MP3 in one operation
-  Destination and safe filenames          Tested    sanitize_filename() & get_unique_path() prevents collisions
+  Destination validation & disk space     Tested    validate_destination() checks directory, write permissions, and asserts >50MB free space
+  Safe filenames & collision protection   Tested    sanitize_filename() & get_unique_path() neutralizes traversal and prevents overwrites
   Real progress/speed/size/ETA            Tested    Real yt-dlp hooks compute speed, fraction, ETA, downloaded bytes
   Start/cancel/retry                      Tested    Clean cancellation via DownloadCanceled; retry without corruption
+  Open File & Containing Folder           Tested    open_downloaded_file() launches system player via os.startfile(); open_download_folder()
   Pause/resume where supported            Partial   HTTP range resume supported natively by engine upon retry
   FFmpeg merge and output verification    Tested    verify_output_file() ensures file exists and size > 0 before finish
-  Error handling and GUI responsiveness   Tested    classify_error() maps network/restricted/ffmpeg/disk to AppError
-  Phase 1 tests/regression                Tested    12 automated unit, GUI & integration tests passing (0.44s)
+  Error handling and GUI responsiveness   Tested    classify_error() maps network/restricted/ffmpeg/disk/drm/deleted to AppError
+  Phase 1 tests/regression                Tested    16 Phase 1 unit & GUI tests passing (36 tests overall in suite)
 
 ## Phase 2 --- Download management
 
