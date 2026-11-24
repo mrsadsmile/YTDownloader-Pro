@@ -27,7 +27,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("YTDownloader Pro")
-    app.setOrganizationName("AliCH")
+    app.setOrganizationName("YTDownloader")
     app.setApplicationVersion("2.6.0")
 
     # Set Application Window Icon

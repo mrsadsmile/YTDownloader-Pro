@@ -1,7 +1,7 @@
-; Inno Setup Script for YTDownloader (AliCH Edition)
-#define MyAppName "YTDownloader (AliCH Edition)"
-#define MyAppVersion "2.5"
-#define MyAppPublisher "AliCH"
+; Inno Setup Script for YTDownloader Pro
+#define MyAppName "YTDownloader Pro"
+#define MyAppVersion "2.6.0"
+#define MyAppPublisher "YTDownloader Community"
 #define MyAppExeName "YTDownloader.exe"
 
 [Setup]
@@ -16,7 +16,7 @@ DefaultDirName={localappdata}\YTDownloader
 DisableProgramGroupPage=yes
 DefaultGroupName={#MyAppName}
 OutputDir=C:\Users\AliCH\Desktop
-OutputBaseFilename=YTDownloader_Setup_by_AliCH
+OutputBaseFilename=YTDownloader_Setup
 SetupIconFile=C:\Users\AliCH\yt-dlp-gui\app_icon.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -24,10 +24,10 @@ WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64
 UninstallDisplayIcon={app}\app_icon.ico
-VersionInfoVersion=2.5.0.0
-VersionInfoCompany=AliCH
-VersionInfoDescription=YTDownloader Installer by AliCH
-VersionInfoCopyright=Copyright (C) 2026 AliCH
+VersionInfoVersion=2.6.0.0
+VersionInfoCompany=YTDownloader Community
+VersionInfoDescription=YTDownloader Pro Standalone Installer
+VersionInfoCopyright=Powered by yt-dlp & FFmpeg
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -41,9 +41,9 @@ Source: "C:\Users\AliCH\yt-dlp-gui\dist\YTDownloader\*"; DestDir: "{app}"; Flags
 Source: "C:\Users\AliCH\yt-dlp-gui\dist\YTDownloader\fonts\*.ttf"; DestDir: "{autofonts}"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"; Comment: "YTDownloader - Packaged by AliCH"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"; Comment: "YTDownloader Pro - Powered by yt-dlp"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\YTDownloader"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"; Tasks: desktopicon; Comment: "YTDownloader - Packaged by AliCH"
+Name: "{autodesktop}\YTDownloader"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"; Tasks: desktopicon; Comment: "YTDownloader Pro - Powered by yt-dlp"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,YTDownloader}"; Flags: nowait postinstall skipifsilent
