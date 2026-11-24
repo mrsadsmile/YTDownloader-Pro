@@ -129,7 +129,7 @@ class ProxyManager:
             opener = urllib.request.build_opener(proxy_handler)
             req = urllib.request.Request(
                 test_url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) YTDownloaderPro/2.8.0"}
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) YTDownloaderPro/3.0.0"}
             )
             with opener.open(req, timeout=timeout) as resp:
                 elapsed_ms = round((time.time() - start_time) * 1000, 1)

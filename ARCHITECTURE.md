@@ -200,3 +200,13 @@ workflows without mocking away the behavior under test.
 - **Context:** Preventing path traversal, unescaped shell execution, and secret leaks in logs.
 - **Decision:** Integrated `sanitize_filename` (neutralizing `..`), argument arrays for FFmpeg, and `redact_secrets()` for all logs and URLs.
 - **Impact:** Full protection against arbitrary file write, command injection, and credential disclosure.
+
+### ADR-004: Dedicated Media Processing & Presets Engine
+- **Context:** Decoupling audio transcoding, subtitle embedding, and SponsorBlock filtering from raw download routines.
+- **Decision:** Introduced `media_tools.py` with standalone functions for audio FFmpeg parameter building, non-destructive subtitle embedding, and `PresetManager` with schema validation.
+- **Impact:** Modular media processing pipeline, safe temporary file replacement, and educational warnings for lossy-to-lossless conversions.
+
+### ADR-005: Network Resiliency, Diagnostic Center & Safe Shutdown Lifecycle
+- **Context:** Managing complex proxy profiles, rate limits, connection timeouts, and preventing orphaned processes upon application exit.
+- **Decision:** Built `network_system.py` (`ProxyManager`, `NetworkConfig`, `DiagnosticCenter`, `LogManager`) and hooked `closeEvent` in `MainWindow` with bounded worker timeouts.
+- **Impact:** Real latency verification, credential redaction, crash-free shutdown, and multi-point system health diagnostics.

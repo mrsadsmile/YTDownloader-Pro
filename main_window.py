@@ -1321,3 +1321,44 @@ class MainWindow(QMainWindow):
             f"An error occurred while downloading:\n\n{err_msg}\n\n"
             "Tip: If connections are filtered, check proxy configuration in Settings."
         )
+
+    def closeEvent(self, event):
+        """Ensures safe termination of workers, processes, and database transactions on exit."""
+        has_active_dl = bool(self.download_worker and self.download_worker.isRunning())
+        has_active_queue = bool(self.queue_mgr and getattr(self.queue_mgr, "active_workers", None))
+
+        if has_active_dl or has_active_queue:
+            reply = QMessageBox.question(
+                self,
+                "Confirm Exit",
+                "Downloads are currently in progress.\n\n"
+                "Exiting will safely cancel active operations and preserve queue state for restart.\n\n"
+                "Are you sure you want to exit?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
+                event.ignore()
+                return
+
+        # Clean shutdown of inspection worker
+        if self.inspect_worker and self.inspect_worker.isRunning():
+            self.inspect_worker.cancel()
+            self.inspect_worker.wait(500)
+
+        # Clean shutdown of active downloader worker
+        if self.download_worker and self.download_worker.isRunning():
+            self.download_worker.cancel()
+            self.download_worker.wait(1000)
+
+        # Clean shutdown of queue workers
+        if self.queue_mgr and hasattr(self.queue_mgr, "active_workers"):
+            for w in list(self.queue_mgr.active_workers.values()):
+                try:
+                    w.cancel()
+                    w.wait(500)
+                except Exception:
+                    pass
+
+        event.accept()
+

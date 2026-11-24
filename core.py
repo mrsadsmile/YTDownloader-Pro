@@ -444,7 +444,7 @@ def generate_diagnostic_report() -> str:
     lines = [
         "=== YTDownloader Pro Diagnostic Report ===",
         f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Application Version: 2.9.0 (Pro Desktop)",
+        f"Application Version: 3.0.0 (Pro Desktop)",
         f"Operating System: {sys.platform} ({os.name})",
         f"Python Version: {sys.version.split()[0]} ({'64-bit' if sys.maxsize > 2**32 else '32-bit'})",
         f"PySide6 Framework Version: {getattr(sys.modules.get('PySide6'), '__version__', '6.12.0')}",

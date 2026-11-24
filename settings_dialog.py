@@ -524,7 +524,7 @@ class SettingsDialog(QDialog):
         ffmpeg_stat = "Available" if ffmpeg_bin else "Missing"
 
         c_layout.addWidget(QLabel("Application Version:"), 0, 0)
-        c_layout.addWidget(QLabel("2.9.0 (Pro Desktop)"), 0, 1)
+        c_layout.addWidget(QLabel("3.0.0 (Pro Desktop)"), 0, 1)
 
         c_layout.addWidget(QLabel("yt-dlp Engine:"), 1, 0)
         c_layout.addWidget(QLabel(f"v{ytdlp_ver}"), 1, 1)
@@ -572,7 +572,7 @@ class SettingsDialog(QDialog):
         QMessageBox.information(
             self,
             "Engine Status",
-            f"YTDownloader Pro Version 2.9.0 is up to date.\n"
+            f"YTDownloader Pro Version 3.0.0 is up to date.\n"
             f"Core Engine (yt-dlp): v{ytdlp_ver}\n"
             f"All components verified operational."
         )

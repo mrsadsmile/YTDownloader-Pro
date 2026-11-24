@@ -56,9 +56,15 @@ class QueueManager(QObject):
     def get_active_count(self) -> int:
         return len(self.active_workers)
 
-    def enqueue_job(self, params: Dict[str, Any], auto_start: bool = True) -> str:
-        """Saves job to database in 'Queued' status and optionally attempts scheduling."""
-        job_data = dict(params)
+    def enqueue_job(self, params: Optional[Dict[str, Any]] = None, auto_start: bool = True, **kwargs) -> str:
+        """Saves job to database in 'Queued' status and optionally attempts scheduling.
+        Supports passing a dictionary or keyword arguments."""
+        if params is not None and isinstance(params, dict):
+            job_data = dict(params)
+            job_data.update(kwargs)
+        else:
+            job_data = dict(kwargs)
+
         job_data["status"] = "Queued"
         job_id = self.db.jobs.add_job(job_data)
         job_data["id"] = job_id

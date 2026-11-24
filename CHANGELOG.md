@@ -6,6 +6,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.0] - Phase 5: Final Engineering, UX Polish, Security, Reliability & Release Readiness (GA)
+
+### Added
+- **Application Shutdown Lifecycle & Worker Protection (`main_window.py`)**:
+  - Implemented safe `closeEvent` hook preventing abrupt process termination.
+  - Prompts user confirmation if downloads or queue tasks are active, safely canceling background workers (`InspectWorker`, `DownloadWorker`, `QueueManager` tasks) with bounded wait timeouts to avoid orphaned child processes.
+  - Reconciles queue state and marks interrupted downloads cleanly in the SQLite database for recovery upon next launch.
+- **Enhanced Queue Manager Dispatching (`queue_manager.py`)**:
+  - Multi-signature `enqueue_job` supporting dictionary payloads and arbitrary keyword arguments.
+  - Auto-injection of runtime network options (rate limit, proxy, retries, timeout, cookies) from configuration into background queue jobs.
+- **Comprehensive Quality Assurance Suite (`tests/test_phase5_final.py`)**:
+  - Expanded test suite to 68 automated unit, integration, persistence, GUI, and end-to-end tests with 100% pass rate.
+  - Added end-to-end user journey tests, error recovery simulations, shutdown safety tests, and security penetration checks.
+- **Production Packaging & Standalone Installer**:
+  - Final standalone Inno Setup installer `YTDownloader_Setup.exe` compiled to Desktop.
+  - Bundled verified runtime dependencies: Python 3.14, PySide6 6.12, yt-dlp 2026.10.26, FFmpeg N-128251.
+
+### Verified & Hardened
+- **Security Audit**: Path traversal defense (`sanitize_filename`), command injection prevention, credential redaction (`redact_secrets`), and safe Netscape cookie parsing.
+- **UI/UX Consistency**: Refined dark Graphite & Slate palette (`#11151B`, `#171D25`, `#1D2530`, `#718CF5`), verified High-DPI scaling, and dynamic RTL/LTR layout switching for Persian and English interfaces.
+
+---
+
 ## [2.9.0] - Phase 4: System Integration, Proxy, Network, Automation & Advanced Settings Milestone
 
 ### Added

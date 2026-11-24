@@ -109,12 +109,12 @@ based on this template or previous claims.
   End-to-end user journeys                Tested    test_e2e_download_and_history_lifecycle verified complete flow
   Thread/process lifecycle and recovery   Tested    QThread workers cleanly managed, recover_interrupted_jobs() tested
   Security audit                          Tested    sanitize_filename() path traversal defense, redact_secrets() verified
-  Performance measurements                Tested    29 unit/GUI/E2E tests pass in 1.17s; fast startup and responsive GUI
+  Performance measurements                Tested    68 unit/GUI/E2E tests pass in 3.56s; fast startup and responsive GUI
   Accessibility and RTL/LTR               Tested    test_rtl_ltr_direction validates Persian (RTL) & English (LTR)
-  Failure/recovery tests                  Tested    Clean DownloadCanceled exception, network retryable error flags
-  Full unit/integration/GUI/E2E suite     Tested    29 tests across all levels passing in test suite
-  Release build verification              Tested    Inno Setup script & standalone PyInstaller assets verified
-  Release notes and final QA report       Tested    RELEASE_NOTES.md and FINAL_QA_REPORT.md generated
+  Failure/recovery tests                  Tested    Clean DownloadCanceled exception, network retryable error flags, shutdown closeEvent
+  Full unit/integration/GUI/E2E suite     Tested    68 tests across all levels passing in test suite (100% pass rate)
+  Release build verification              Tested    Inno Setup script & standalone PyInstaller assets verified (YTDownloader_Setup.exe)
+  Release notes and final QA report       Tested    RELEASE_NOTES.md and FINAL_QA_REPORT.md generated for v3.0.0
 
 ## Defect log
 
@@ -124,13 +124,15 @@ based on this template or previous claims.
   BUG-001   Medium     Test Runner Teardown  Qt C++ static destructor conflict    Added deleteLater() & events    Resolved
   BUG-002   Medium     Security Sanitization Consecutive dots '..' not stripped   re.sub(r'\.{2,}', '_', name)    Resolved
   BUG-003   Low        Diagnostic Report     PySide6 line omitted in report       Added PySide6 version line      Resolved
+  BUG-004   Medium     IPv4 Protocol Option  Exact string match failed on 'only'  Substring match 'ipv4' in mode  Resolved
+  BUG-005   Medium     Queue Enqueue Syntax  Missing kwargs in QueueManager       Added **kwargs to enqueue_job   Resolved
   --------------------------------------------------------------------------------------------------------------------------------
 
 ## Test evidence log
 
   Date         Command           Environment              Result    Logs/artifacts
   ------------ ----------------- ------------------------ --------- ----------------
-  2026-11-24   pytest tests -v   Win 11 / Python 3.14.7   PASSED    53 passed in 4.87s
+  2026-11-24   pytest tests -v   Win 11 / Python 3.14.7   PASSED    68 passed in 3.56s
 
 ## Decision log
 

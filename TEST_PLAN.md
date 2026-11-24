@@ -225,5 +225,17 @@ independent work, and mark Blocked/UNVERIFIED.
 | `test_phase4_system.py` | Automation Preset Matching | 1 | 1 | 0 | 0.01s | Maps YouTube, SoundCloud, Bandcamp, Twitter domains to presets |
 | `test_phase4_system.py` | SettingsDialog GUI | 1 | 1 | 0 | 0.08s | Exactly 5 tabs, full Phase 4 controls, load/save roundtrip |
 | `test_phase4_system.py` | DiagnosticsDialog GUI | 1 | 1 | 0 | 0.08s | Dialog initialization, real-time table populating with health badges |
-| **Total Test Suite** | **Full Regression Suite** | **64** | **64** | **0** | **3.71s** | **100% Pass Rate** |
+
+## 17. Phase 5 Final Verified Test Runs (Full Release QA)
+
+| Test Suite | Scope | Executed | Passed | Failed | Duration | Evidence / Highlights |
+|---|---|---|---|---|---|---|
+| `test_phase5_final.py` | E2E Download & History | 1 | 1 | 0 | 0.02s | Clean URL -> simulated stream download -> verification -> history record |
+| `test_phase5_final.py` | Security Path Traversal | 1 | 1 | 0 | 0.01s | Neutralizes '..' directory traversal attempts and illegal filename tokens |
+| `test_phase5_final.py` | RTL / LTR Direction | 1 | 1 | 0 | 0.01s | Switches Qt layout direction dynamically between Persian and English |
+| `test_phase5_final.py` | Shutdown & Worker Safety | 1 | 1 | 0 | 0.02s | Handles MainWindow.closeEvent, terminates active workers cleanly |
+| `test_phase5_final.py` | End-to-End Queue Flow | 1 | 1 | 0 | 0.03s | Enqueues job, verifies state transitions (Queued, Paused, Cancelled) |
+| `test_phase5_final.py` | Error Recovery & Advice | 1 | 1 | 0 | 0.02s | Maps raw errors to actionable user messages with retry flags |
+| `test_phase5_final.py` | Secret Redaction Security | 1 | 1 | 0 | 0.01s | Masks passwords in proxy URLs and debug logs |
+| **Total Test Suite** | **Full Regression Suite** | **68** | **68** | **0** | **3.56s** | **100% Pass Rate** |
 

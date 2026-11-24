@@ -1,67 +1,67 @@
-# YTDownloader Pro v2.6.0 --- Official Release Notes
+# YTDownloader Pro v3.0.0 --- Official Production Release Notes
 
 **Release Date:** November 24, 2026  
 **Architecture:** Windows 10/11 x64  
-**Packaging:** Standalone Installer (`YTDownloader_Setup_v2.6.0.exe`)  
-**Core Technologies:** Python 3.14, PySide6 6.12, yt-dlp 2026.10.26, FFmpeg N-128251  
+**Packaging:** Standalone Installer (`YTDownloader_Setup.exe` on Desktop)  
+**Core Technologies:** Python 3.14.7, PySide6 6.12.0, yt-dlp 2026.10.26, FFmpeg N-128251  
 
 ---
 
 ## 🌟 Highlights & Overview
 
-YTDownloader Pro v2.6.0 is a modern, lightweight desktop media utility engineered according to strict UI/UX and architectural guidelines. It delivers a refined dark Graphite & Slate aesthetic, responsive controls, thread-safe background workers, and crash-safe SQLite persistence.
+YTDownloader Pro v3.0.0 represents the complete, production-ready release of the modern desktop media utility. Engineered according to strict UI/UX guidelines and robust desktop software architecture, it delivers a refined Graphite & Slate aesthetic, responsive asynchronous background execution, thread-safe concurrency, and crash-resilient SQLite persistence.
 
 ---
 
-## 🚀 Key Features by Phase
+## 🚀 Key Features & Capabilities
 
-### 1. Core Engine & Download Experience
-- **Smart URL Analysis & Cleaning:** Automatically strips social tracking and referrer parameters (`si`, `feature`, etc.) before analysis.
-- **Dynamic Resolution Discovery:** Dynamically detects actual available media resolutions from 360p up to 4K (2160p) without offering fake or unavailable formats.
-- **Three Core Download Modes:**
-  - **Video Mode:** Merges best available video with optimal audio stream into MP4, MKV, or WEBM.
-  - **Audio Only Mode:** Extracts audio tracks directly into MP3, M4A, OPUS, WAV, or FLAC with user-selectable bitrates.
-  - **Dual Mode:** Downloads the pristine full-resolution video AND extracts an independent standalone high-bitrate MP3 in one operation.
-- **Strict Output Verification:** Guarantees media files exist and have non-zero file sizes on disk before reporting success.
-- **Structured Error Model:** Maps low-level exceptions into clear, actionable user messages with retryability flags.
+### 1. Core Downloader & Experience (Phase 1)
+- **Smart URL Analysis:** Strips social tracking tokens (`si`, `feature`, `fbclid`, etc.) and fetches rich media metadata asynchronously.
+- **Dynamic Format Discovery:** Detects exact video resolutions (360p to 4K 2160p), frame rates, codecs, and container formats.
+- **Three Primary Download Modes:**
+  - **Video Mode:** Merges pristine video with optimal audio into MP4, MKV, or WEBM.
+  - **Audio Only Mode:** Extracts audio bitstreams directly into MP3, M4A, OPUS, WAV, or FLAC.
+  - **Dual Mode:** Downloads the full video and simultaneously extracts a standalone high-bitrate MP3 in a single pass.
+- **Output Integrity Verification:** Verifies non-zero byte size on disk before reporting task success.
+- **Structured Error Model:** Translates low-level engine errors into actionable user advice with retry flags.
 
-### 2. Download Management & Persistence
-- **Crash-Safe SQLite Database:** Operates with Write-Ahead Logging (WAL) and automatic versioned schema migrations (`app_data.db`).
-- **Crash & Interruption Recovery:** Automatically reconciles and recovers active jobs if the system is restarted or terminated unexpectedly.
-- **Searchable Download History:** Real-time search by title, URL, or path with live disk file verification (detects if files have been moved or deleted).
-- **Concurrency & Queue Scheduler:** Enqueues multiple media downloads with configurable worker limits (`max_concurrent`).
-- **Batch Ingestion:** Ingests and sanitizes multiline URL batches.
+### 2. Download Queue, Playlists, Batch & File Management (Phase 2)
+- **Persistent SQLite Queue:** Operates with Write-Ahead Logging (WAL) and automatic versioned schema migrations (`app_data.db`).
+- **Crash & Interruption Recovery:** Automatically reconciles and recovers interrupted jobs upon application restart.
+- **Concurrency Throttling:** Configurable concurrent workers (1 to 5) with priority reordering (Up, Down, Max).
+- **Playlist & Batch Ingestion:** Explores entire playlists with item-level checkboxes and ingests multiline URL batches.
+- **Disk File Manager (`FilesView`):** Safely rename, move, delete, or reveal downloaded media in Windows Explorer with synchronized database updates.
 
-### 3. Media Tools & Post-Processing
-- **Comprehensive Codec Support:** Lossless (`flac`, `pcm_s16le`) and lossy (`libmp3lame`, `aac`, `libopus`) audio encoding.
-- **Subtitles & Captions:** Discovers available manual and automated subtitles with custom language selection and embedding options.
-- **SponsorBlock Integration:** Skips sponsor segments, self-promotions, and intros based on community data.
-- **Built-in Presets:** High Quality 1080p, Maximum 4K, Podcast MP3 320k, Lossless FLAC, and Mobile 480p, plus custom user presets CRUD.
+### 3. Media Tools, Audio Extraction, Subtitles, Presets & SponsorBlock (Phase 3)
+- **Granular Audio Controls:** Bitrates (128k to 320k), sample rates (44.1kHz, 48kHz, 96kHz), and channels (Mono/Stereo).
+- **Lossless Transcoding Warning:** Advises users that converting lossy web audio to FLAC/WAV will not restore lost studio fidelity.
+- **Comprehensive Subtitle Manager:** Differentiates manual creator subtitles from auto-generated captions, supports multi-language selection, and allows embedding or standalone SRT/VTT downloads.
+- **SponsorBlock Integration:** Connects to official SponsorBlock API (`sponsor.ajay.app`) with 8 configurable categories to automatically skip sponsors, intros, and fillers in YouTube videos.
+- **Smart Presets Engine:** 8 built-in production presets + custom user preset CRUD with secure JSON import/export filtering.
 
-### 4. System & Advanced Capabilities
-- **Proxy Management:** Presets for V2Ray (HTTP/SOCKS), Clash, and Sing-Box with live latency connection testing.
-- **Credential Protection:** Automatic redaction of sensitive credentials and passwords from URLs, diagnostic logs, and terminal outputs.
-- **Diagnostic Center:** Generates a sanitized, one-click copyable diagnostic report for rapid troubleshooting.
-- **Cookie Support:** Netscape-format cookie file importer for downloading authorized or age-restricted content.
-- **Settings Portability:** Export settings to JSON, import configuration, or reset to factory defaults.
-- **Internationalization:** Full layout direction switching between English (LTR) and Persian (RTL).
+### 4. Proxy Manager, Network Acceleration, Diagnostics & Automation (Phase 4)
+- **Multi-Protocol Proxy Support:** HTTP, HTTPS, SOCKS4, and SOCKS5 with presets for V2Ray, Clash, and Sing-Box.
+- **Real Connection Testing:** Real network request measures actual latency (ms) and HTTP status.
+- **Network Tuning:** Socket timeout (5s–60s), network retries, fragment retries, concurrent fragment downloads (1–16), and speed rate limiting.
+- **Cookie Authentication:** Netscape cookie file validation and browser cookie extraction (Chrome, Firefox, Edge, Brave, Opera).
+- **Interactive Diagnostic Center:** 6-point system health audit (DB, disk, DNS, proxy, engine) with sanitized report export.
+- **Intelligent Automation:** Transparent clipboard monitoring with user consent prompt and domain-to-preset auto-matching.
+
+### 5. Final Hardening, Shutdown Safety & Reliability (Phase 5)
+- **Clean Application Shutdown:** `closeEvent` confirms exit when downloads are active and terminates background workers cleanly without leaving orphaned processes.
+- **Strict Security:** Path traversal defense (`sanitize_filename`), command injection prevention, and password redaction (`redact_secrets`).
+- **Full Internationalization:** Seamless layout direction switching between English (LTR) and Persian (RTL).
 
 ---
 
-## 🛡️ Security & Reliability Fixes
-- **Path Traversal Defense:** Sanitizes filenames to eliminate directory traversal sequences (`..`, slashes, illegal Windows characters).
-- **Command Injection Prevention:** All FFmpeg invocations use explicit argument lists without raw shell execution.
-- **WinError 448 Junction Mitigation:** Sanitizes process `PATH` to eliminate unverified junctions before invoking yt-dlp.
+## 📋 Quality Assurance & Verification Summary
 
----
-
-## 📋 Quality Assurance Summary
-- **Total Automated Tests:** 29 automated unit, GUI, integration, and E2E regression tests.
-- **Pass Rate:** 100% (29 passed, 0 failed in 1.17s).
+- **Total Automated Tests:** 68 tests across unit, integration, persistence, GUI, and end-to-end suites.
+- **Pass Rate:** 100% (68 passed, 0 failed in 3.56s).
 - **Tested Environment:** Windows 11 x64, Python 3.14.7, PySide6 6.12.0.
 
 ---
 
 ## 📥 Installation
 
-Download `YTDownloader_Setup_v2.6.0.exe` from the [Releases](https://github.com/mrsadsmile/YTDownloader-Pro/releases) page. The installer is completely standalone and bundles all Python, Qt, yt-dlp, and FFmpeg dependencies.
+The standalone installer `YTDownloader_Setup.exe` is available on the Desktop and on GitHub Releases. It bundles all necessary runtime dependencies, requiring no separate Python installation.
